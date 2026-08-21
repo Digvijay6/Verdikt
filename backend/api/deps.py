@@ -14,7 +14,7 @@ from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel
 
-from shared.config import settings
+from shared.config import get_settings
 
 bearer = HTTPBearer(auto_error=True)
 
@@ -32,7 +32,7 @@ def current_recruiter(
     try:
         claims = jwt.decode(
             creds.credentials,
-            settings.supabase_jwt_secret,
+            get_settings().supabase_jwt_secret,
             algorithms=["HS256"],
             audience="authenticated",
         )

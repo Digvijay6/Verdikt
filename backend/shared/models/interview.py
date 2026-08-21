@@ -3,6 +3,9 @@
 InterviewPackage is the lane 1 -> lane 2 handoff: everything the voice worker
 needs to conduct an interview, assembled at redeem time and passed into the
 LiveKit room as metadata.
+
+Question and its rubric live in job.py, not here — the job owns them (D16) and
+this lane consumes them.
 """
 
 from datetime import datetime
@@ -11,45 +14,15 @@ from enum import StrEnum
 from pydantic import BaseModel, Field
 
 from .candidate import ParsedResume
-
-
-class QuestionType(StrEnum):
-    BEHAVIORAL = "behavioral"
-    TECHNICAL = "technical"
-    SITUATIONAL = "situational"
-    POISON = "poison"  # references tech that does not exist — see docs/rubric.md
-
-
-class RubricDimension(BaseModel):
-    """One scored axis. Weights are per question template and re-normalised at
-    aggregation, so a missing dimension never silently distorts the total."""
-
-    key: str = Field(description="e.g. 'correctness', 'depth', 'communication'")
-    weight: float = Field(gt=0.0, le=1.0)
-    anchors: dict[int, str] = Field(
-        description="BARS anchors, 1-5. What each score level actually looks like."
-    )
-
-
-class Question(BaseModel):
-    id: str
-    order: int
-    type: QuestionType
-    prompt: str
-    competency: str
-    dimensions: list[RubricDimension]
-    must_have: bool = Field(
-        False, description="Scoring <=2 here caps the overall score. See scoring.py."
-    )
-    follow_up_guidance: str | None = None
+from .job import Question
 
 
 class InterviewPackage(BaseModel):
     """LANE 1 -> LANE 2. Everything the worker needs; nothing it doesn't.
 
-    Deliberately excludes the candidate's name and demographic detail — the
-    interviewer agent does not need them, and blind conduct is easier to
-    defend than blind conduct retrofitted later.
+    Deliberately excludes the candidate's name and demographic detail (D14). The
+    interviewer agent does not need them, and blind conduct is far easier to
+    defend than blind conduct retrofitted after a complaint.
     """
 
     interview_id: str
@@ -84,7 +57,7 @@ class Interview(BaseModel):
     application_id: str
     job_id: str
     status: InterviewStatus
-    room_name: str
+    room_name: str | None = None
     started_at: datetime | None = None
     ended_at: datetime | None = None
     transcript: list[TranscriptTurn] = []

@@ -1,0 +1,88 @@
+/* Minimal shared styling. Deliberately plain — component-level design is a
+   later pass, and lane 3 owns the shared UI primitives. */
+
+:root {
+  --bg: #ffffff;
+  --fg: #16181d;
+  --muted: #6b7280;
+  --line: #e5e7eb;
+  --card: #fafafa;
+  --error: #b42318;
+  --accent: #1f2937;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #101114;
+    --fg: #e8eaed;
+    --muted: #9aa1ab;
+    --line: #2a2d34;
+    --card: #17191d;
+    --error: #f97066;
+    --accent: #e8eaed;
+  }
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font: 15px/1.55 system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+.wrap { max-width: 46rem; margin: 0 auto; padding: 2rem 1.25rem 4rem; }
+h1 { font-size: 1.5rem; margin: 0 0 1.25rem; }
+
+label { display: block; margin: 0 0 1rem; font-weight: 500; }
+input, textarea, select {
+  display: block;
+  width: 100%;
+  margin-top: 0.35rem;
+  padding: 0.55rem 0.65rem;
+  font: inherit;
+  color: var(--fg);
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  box-sizing: border-box;
+}
+input[type="checkbox"] { width: auto; display: inline; margin: 0.2rem 0 0; }
+textarea { resize: vertical; }
+
+.consent {
+  display: flex;
+  gap: 0.6rem;
+  align-items: flex-start;
+  font-weight: 400;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+button {
+  font: inherit;
+  padding: 0.5rem 0.9rem;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--card);
+  color: var(--fg);
+  cursor: pointer;
+}
+button:disabled { opacity: 0.55; cursor: not-allowed; }
+
+.card {
+  border: 1px solid var(--line);
+  background: var(--card);
+  border-radius: 8px;
+  padding: 1rem 1.1rem;
+  margin: 1rem 0;
+}
+.card header { display: flex; gap: 0.6rem; align-items: baseline; margin-bottom: 0.5rem; }
+.card footer { display: flex; gap: 0.6rem; align-items: center; margin-top: 0.85rem; flex-wrap: wrap; }
+
+.hint { color: var(--muted); font-weight: 400; font-size: 0.87rem; }
+.error { color: var(--error); }
+
+details { margin: 0.5rem 0; }
+summary { cursor: pointer; color: var(--muted); font-size: 0.9rem; }
+ul { margin: 0.4rem 0; padding-left: 1.1rem; }
+a { color: inherit; }

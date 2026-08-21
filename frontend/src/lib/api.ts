@@ -27,7 +27,11 @@ async function request<T>(
   { authenticated = true }: { authenticated?: boolean } = {},
 ): Promise<T> {
   const headers = new Headers(init.headers);
-  headers.set("Content-Type", "application/json");
+  // Never set Content-Type for FormData — the browser has to supply the
+  // multipart boundary itself, and overriding it silently breaks the upload.
+  if (!(init.body instanceof FormData)) {
+    headers.set("Content-Type", "application/json");
+  }
 
   // Recruiter routes carry a Supabase JWT. Candidate routes (the interview
   // itself) are public and authenticated by the invite token in the body.
@@ -51,6 +55,10 @@ export const api = {
   get: <T>(path: string) => request<T>(path),
   post: <T>(path: string, body: unknown) =>
     request<T>(path, { method: "POST", body: JSON.stringify(body) }),
+
+  /** Multipart, for the résumé upload on the public application form. */
+  postForm: <T>(path: string, body: FormData) =>
+    request<T>(path, { method: "POST", body }, { authenticated: false }),
 
   /** Public — no session required. The invite token is the auth. */
   redeemInvite: <T>(token: string) =>

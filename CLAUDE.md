@@ -23,9 +23,9 @@ Three owners, disjoint folders. Work only in your lane.
 
 | Lane | Owner | Folders |
 |---|---|---|
-| 🔵 Intake | Aditya | `api/routers/intake.py` · `backend/agents/question_builder/` · `frontend/src/routes/intake` · `components/intake` |
+| 🔵 Intake | Aditya | `backend/intake/**` · `api/routers/intake.py` · `frontend/src/routes/intake` · `components/intake` |
 | 🟡 Interview | — | `backend/voice/**` · `api/routers/interview.py` · `frontend/src/routes/interview` · `lib/proctor` |
-| 🟢 Insights | — | `api/routers/insights.py` · `backend/agents/recruiter_chat/` · `frontend/src/routes/recruiter` · `components/insights` |
+| 🟢 Insights | — | `backend/insights/**` · `api/routers/insights.py` · `frontend/src/routes/recruiter` · `components/insights` |
 
 Tables follow the same rule — everyone reads, only the owner writes:
 

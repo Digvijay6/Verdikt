@@ -1,5 +1,5 @@
 {
-  "$comment": "Single source of truth for which prompt and model runs each task. Swapping a model or bumping a prompt is an edit here, not a code change. Every task's model_id and version get persisted with whatever the call produced — see backend/shared/llm.py.",
+  "$comment": "Single source of truth for which prompt and model runs each task. Swapping a model or bumping a prompt is an edit here, not a code change. Every task's model_id and version get persisted with whatever the call produced (D5). Nested blocks are ADK workflow sub-agents, addressed with dotted keys: llm.run('question-builder.validator', ...).",
   "tasks": {
     "resume-parse": {
       "prompt": "resume-parse.v1.md",
@@ -11,11 +11,45 @@
       "model": "gemini-3.1-pro",
       "version": "v1"
     },
-    "jd-to-rubric": {
-      "prompt": "jd-to-rubric.v1.md",
-      "model": "gemini-3.1-pro",
-      "version": "v1"
+
+    "question-builder": {
+      "competency-extractor": {
+        "prompt": "qb/competency-extractor.v1.md",
+        "model": "gemini-3.1-pro",
+        "version": "v1"
+      },
+      "technical-writer": {
+        "prompt": "qb/technical-writer.v1.md",
+        "model": "gemini-3.1-pro",
+        "version": "v1"
+      },
+      "behavioral-writer": {
+        "prompt": "qb/behavioral-writer.v1.md",
+        "model": "gemini-3.1-pro",
+        "version": "v1"
+      },
+      "poison-writer": {
+        "prompt": "qb/poison-writer.v1.md",
+        "model": "gemini-3.1-pro",
+        "version": "v1"
+      },
+      "rubric-writer": {
+        "prompt": "qb/rubric-writer.v1.md",
+        "model": "gemini-3.1-pro",
+        "version": "v1"
+      },
+      "validator": {
+        "prompt": "qb/validator.v1.md",
+        "model": "gemini-3.1-pro",
+        "version": "v1"
+      },
+      "reviser": {
+        "prompt": "qb/reviser.v1.md",
+        "model": "gemini-3.1-pro",
+        "version": "v1"
+      }
     },
+
     "interviewer-system": {
       "prompt": "interviewer-system.v1.md",
       "model": "gemini-2.5-flash-native-audio-preview-12-2025",

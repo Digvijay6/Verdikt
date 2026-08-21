@@ -24,3 +24,10 @@ frontend/src/types/api.ts
 .DS_Store
 .vscode/
 .idea/
+
+# local agent/editor settings — machine specific, not shared
+.claude/settings.local.json
+
+# build output
+frontend/dist/
+*.tsbuildinfo

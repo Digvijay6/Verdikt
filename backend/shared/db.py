@@ -10,9 +10,10 @@ from functools import lru_cache
 
 from supabase import Client, create_client
 
-from .config import settings
+from .config import get_settings
 
 
 @lru_cache(maxsize=1)
 def db() -> Client:
-    return create_client(settings.supabase_url, settings.supabase_service_key)
+    s = get_settings()
+    return create_client(s.supabase_url, s.supabase_service_key)

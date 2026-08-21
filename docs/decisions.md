@@ -179,6 +179,84 @@ Not forgotten, not in scope for the hackathon:
 - Tier 2 extension and Tier 3 native proctoring client.
 - Outcome loop — tying scores to 30/60/90-day performance.
 
+## D16 · Question bank is generated once per job
+
+**Chosen:** one bank per job. Every candidate for a role gets the identical
+questions and the identical rubric.
+**Rejected:** tailoring questions to each candidate's resume.
+**Why:** tailoring destroys score comparability. If candidate A got easier
+questions, ranking them against B on the same leaderboard is meaningless. It
+also reintroduces exactly the bias structured interviewing exists to remove —
+same questions, same rubric, same conditions is the whole basis for defending
+the process. Cheaper too: one workflow run per job rather than per applicant.
+**Still adaptive:** follow-ups within an interview vary by answer (lane 2). The
+*scored* questions stay constant.
+
+## D17 · Applications arrive via a public per-job form
+
+**Chosen:** `POST /intake/applications`, no account, résumé PDF upload.
+**Why:** ATS integration is deferred (D15) and CSV import is demo-only. A real
+form is also where the consent checkbox lives, which has to exist before any
+résumé is processed.
+
+## D18 · Hard checks are deterministic and run before the LLM
+
+**Chosen:** plain Python over `ScreeningProfile` — years, required skills,
+location. No model. Only survivors reach the LLM screen.
+**Why:** free, instant, and testable. A rule you can read and point at in a
+dispute is the only defensible way to reject someone automatically.
+**Design bias, deliberate:** every ambiguous case passes through rather than
+rejecting. Unknown years of experience passes. Unknown location passes. Work
+authorization is never auto-failed — it is not inferable from a résumé and
+guessing at it is both unreliable and legally hazardous. **A false reject is
+invisible and unappealable**, so the gate leans toward letting the LLM screen
+(which sees everything and can say `review`) make the call.
+
+## D19 · `review` outcomes go to a recruiter queue
+
+**Chosen:** `accept` auto-sends the invite; `reject` writes the decision and
+sends nothing; `review` waits in a queue where a human accepts or rejects.
+**Why:** this is where compliance.md's human-in-the-loop requirement physically
+lives. The queue shows the model's evidence quotes beside its recommendation —
+a recommendation without its evidence invites rubber-stamping, which is the
+failure mode the review step exists to prevent.
+
+## D20 · Candidate identity is keyed on email
+
+**Chosen:** one `candidate` row per email (Postgres `citext`, so casing is
+handled by the database rather than by every caller remembering to normalise).
+`application` is the per-job row, unique on `(job_id, candidate_id)`.
+**Why:** without it, one person applying twice becomes two leaderboard entries.
+
+## D21 · ADK sub-agent prompts live in llm/prompts like everything else
+
+**Chosen:** `registry.json` gains nested blocks addressed with dotted keys —
+`llm.run("question-builder.validator", ...)`. Flat `jd-to-rubric` removed; the
+workflow replaces it.
+**Why:** keeps D5 honest. One place to look when a model needs changing.
+**Implementation note:** ADK substitutes `{key}` in string instructions from
+session state, which mangles any prompt containing a JSON example — and most of
+these do. Instructions are therefore built by a callable
+(`_instruction()` in `question_builder.py`) rather than passed as strings.
+
+## D22 · Building on ADK's deprecated workflow agents, knowingly
+
+**Chosen:** `SequentialAgent` / `ParallelAgent` / `LoopAgent`.
+**The catch:** as of google-adk 2.7.1 all three are **deprecated** in favour of
+`google.adk.workflow.Workflow`, an edge-based graph API. Every tutorial, blog
+post, and doc page still uses the deprecated classes — this was only found by
+installing the package and reading the warnings.
+**Why proceed anyway:** they work now; removal is "a future version"; `Workflow`
+cannot yet be used as an `LlmAgent` sub-agent, so it is still settling; and the
+learning material a newcomer will reach for all uses the old API.
+**Why it is safe to defer:** the entire dependency is behind `build_workflow()`
+in one file. Migration is contained.
+**Revisit:** before launch, not before the hackathon. The deprecation warning is
+filtered in `backend/pytest.ini` with a pointer here — delete that filter when
+migrating.
+
+---
+
 ---
 
 ## Provenance of the original plan

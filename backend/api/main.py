@@ -8,7 +8,7 @@ OpenAPI: http://localhost:8000/openapi.json  <- frontend types generate from thi
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from shared.config import settings
+from shared.config import get_settings
 
 from .routers import insights, intake, interview
 
@@ -20,7 +20,7 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[settings.frontend_origin],
+    allow_origins=[get_settings().frontend_origin],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

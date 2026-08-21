@@ -1,27 +1,34 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Route, Routes } from "react-router-dom";
+import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
+
+import ApplicationForm from "./routes/intake/ApplicationForm";
+import JobsPage from "./routes/intake/JobsPage";
+import ReviewQueue from "./routes/intake/ReviewQueue";
+import "./app.css";
 
 const queryClient = new QueryClient();
 
 /**
  * Route ownership mirrors folder ownership:
- *   /jobs, /applications   LANE 1  routes/intake
+ *   /jobs, /applications        LANE 1  routes/intake
+ *   /apply/:jobId               LANE 1  public — candidates applying
  *   /leaderboard, /candidates   LANE 3  routes/recruiter
- *   /interview/:token      LANE 2  routes/interview   (public, no auth)
+ *   /interview/:token           LANE 2  public — the interview itself
  *
- * The interview route is the only public one. Everything else sits behind a
- * Supabase session.
+ * The two public routes are the only pages a candidate ever sees. Everything
+ * else sits behind a Supabase session.
  */
 export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <BrowserRouter>
         <Routes>
-          <Route path="/" element={<Placeholder name="Verdikt" />} />
+          <Route path="/" element={<Navigate to="/jobs" replace />} />
 
           {/* LANE 1 */}
-          <Route path="/jobs/*" element={<Placeholder name="Jobs" />} />
-          <Route path="/applications/*" element={<Placeholder name="Applications" />} />
+          <Route path="/jobs" element={<JobsPage />} />
+          <Route path="/applications/:jobId" element={<ReviewQueue />} />
+          <Route path="/apply/:jobId" element={<ApplicationForm />} />
 
           {/* LANE 3 */}
           <Route path="/leaderboard/*" element={<Placeholder name="Leaderboard" />} />
@@ -36,5 +43,10 @@ export default function App() {
 }
 
 function Placeholder({ name }: { name: string }) {
-  return <div style={{ padding: 32, fontFamily: "system-ui" }}>{name}</div>;
+  return (
+    <main className="wrap">
+      <h1>{name}</h1>
+      <p className="hint">Not built yet.</p>
+    </main>
+  );
 }

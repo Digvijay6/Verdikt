@@ -7,67 +7,79 @@ Last updated: 2026-08-22
 
 ---
 
-## Built
+## Built and verified
 
-- Repo scaffold — full tree, pushed to `Digvijay6/Verdikt` on `main`
-- `backend/shared/models/` — **all three model files are complete.** These are
-  the cross-lane contracts. `candidate.py` 🔵, `interview.py` 🟡,
-  `scoring.py` 🟡🟢
-- `backend/shared/llm.py` — registry-driven `run(task, schema)`, returns
-  `(parsed, Provenance)`
-- `backend/shared/config.py`, `db.py`
-- `backend/api/main.py` — app, CORS, routers mounted
-- `backend/api/deps.py` — Supabase JWT verification
-- `frontend/src/lib/api.ts` — typed client, public vs authenticated split
-- `frontend/` — Vite + React + Router skeleton
-- `llm/registry.json` — all 8 tasks registered
-- `llm/prompts/score-answer.v1.md`, `screen-application.v1.md` — written
-  properly, they encode the rubric and bias rules
-- Docs: `architecture.md`, `decisions.md`, `contracts.md`, `rubric.md`,
-  `compliance.md`, plus `CLAUDE.md`
+**Schema** — `supabase/migrations/20260822000001_lane_all_initial_schema.sql`
+covers all three lanes. Not yet applied to a live project (`supabase db push`).
 
-## Blocking everyone
+**Lane 1 🔵 — backend, complete**
+- `backend/intake/hard_checks.py` — deterministic gate, **16 tests passing**
+- `backend/intake/parsing.py` — résumé PDF → `ParsedResume` via Gemini
+- `backend/intake/screening.py` — the LLM screen, trusted/untrusted split enforced
+- `backend/intake/invites.py` — token mint, hash-only storage, Resend email
+- `backend/intake/repo.py` — Supabase access for lane 1's tables
+- `backend/intake/pipeline.py` — parse → gate → screen → invite
+- `backend/intake/question_builder.py` — the ADK workflow, **11 tests passing**
+- `backend/api/routers/intake.py` — 9 endpoints, app boots, OpenAPI generates
 
-- **`supabase/migrations/` is empty.** No tables exist. Every lane is blocked on
-  this. It is a shared surface, so it should be written once, not three times.
-  Next up.
+**Lane 1 🔵 — frontend**
+- `routes/intake/ApplicationForm.tsx` — public, with the consent gate
+- `routes/intake/JobsPage.tsx` — create job, poll question-bank build
+- `routes/intake/ReviewQueue.tsx` — human-in-the-loop decisions
+- Typecheck clean, production build succeeds
 
-## Not built yet
+**Shared**
+- `shared/models/job.py` — `Job`, `ScreeningProfile`, `Question`, `RubricDimension`
+- `shared/llm.py` — PDF input, dotted task keys, `Provenance` on every call
+- Settings resolve lazily, so importing a module no longer needs a full `.env`
+- `llm/prompts/` — `resume-parse`, `screen-application`, and all 7 `qb/` prompts
 
-| Item | Lane | Note |
-|---|---|---|
-| Migrations, all lanes | shared | **blocking — do first** |
-| `backend/agents/question_builder/` | 🔵 | ADK Sequential → Parallel → Loop. Replaces the weakest prompt |
-| Intake flow end to end | 🔵 | apply → parse → hard checks → screen → invite email |
-| 6 of 8 prompts | mixed | `resume-parse`, `jd-to-rubric`, `interviewer-system`, `score-answer-live`, `score-holistic`, `recruiter-chat` are stubs |
-| All router handlers | all | currently `raise NotImplementedError`, flow documented above each |
-| `backend/voice/**` | 🟡 | agent entrypoint stubbed only |
-| Browser proctor detectors | 🟡 | `frontend/src/lib/proctor/` empty |
-| `backend/agents/recruiter_chat/` | 🟢 | ADK LlmAgent + tools + sessions |
-| Frontend routes | all | placeholders |
-| Calibration set | 🔵 | 20–30 hand-scored answers. Required before real candidates — see D5 |
-| Consent screens | 🔵 | see `compliance.md` |
+**27 tests passing.** `cd backend && ./.venv/bin/python -m pytest tests/ -q`
+
+## Not yet done in lane 1
+
+- **Nothing has run against real Gemini or a real Supabase project.** Every test
+  so far is structural. The first live run is the real verification.
+- Recruiter auth UI — the API checks JWTs, the frontend has no login page
+- No rate limiting on the public application endpoint
+- Calibration set (20–30 hand-scored answers) — required before real candidates,
+  see D5
+
+## Blocking other lanes
+
+Nothing structurally. The migration and all shared models are in place, so:
+
+- **🟡 Lane 2** can build against `InterviewPackage` and write `InterviewResult`.
+  `POST /interview/redeem` is stubbed with its order of operations documented in
+  `docs/contracts.md`.
+- **🟢 Lane 3** can build against `InterviewResult`. Leaderboard and detail
+  endpoints are stubbed.
 
 ## Known constraints to design around
 
+- **ADK workflow agents are deprecated** (google-adk 2.7.1). `SequentialAgent`,
+  `ParallelAgent`, `LoopAgent` still work but `Workflow` supersedes them. Known
+  and accepted — see D22. Contained behind `build_workflow()`.
 - **Gemini Live mid-session limits.** On `gemini-3.1-flash-live-preview`,
-  LiveKit documents that `generate_reply()`, `update_instructions()`, and
-  `update_chat_ctx()` do not work mid-session, and async function calling is
-  unavailable. Adaptive probing must be driven by function calling plus a
-  question state machine, not by rewriting instructions mid-call. The 2.5
-  native-audio model does not have these limits — the registry currently points
-  at 2.5. Record whichever is used in `Interview.model_id`.
+  `generate_reply()`, `update_instructions()` and `update_chat_ctx()` do not
+  work mid-session and async function calling is unavailable. Adaptive probing
+  must run through function calling plus a question state machine. The registry
+  currently points at the 2.5 native-audio model, which has no such limits.
 - **Speech-to-speech means no live diarization.** Multi-speaker detection runs
   post-call over recorded tracks.
+- **`BackgroundTasks` is in-process.** A server restart mid-pipeline loses the
+  work. Fine for the hackathon; the fix is a real queue and the interface does
+  not change.
+- **Resend needs a verified domain** before it will deliver to arbitrary
+  addresses. Start DNS verification early.
 
 ## Open questions
 
-- Should the interviewer greet candidates by name? Currently no — see D14.
-- Which Gemini Live model to settle on, given the mid-session limits above.
-- Who owns `interviewer-system.v1.md` — it is lane 2's prompt but built from
-  lane 1's question bank.
+- Should the interviewer greet candidates by name? Currently no — D14.
+- Which Gemini Live model to settle on, given the mid-session limits.
+- Who owns `interviewer-system.v1.md` — lane 2's prompt, built from lane 1's bank.
 
 ## Recently decided
 
-See `docs/decisions.md`. Most recent: **D9** — ADK goes before and after the
-call, never in the scoring path.
+D16–D22, all from the lane 1 build. Most consequential: **D16**, one question
+bank per job rather than per candidate.

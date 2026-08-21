@@ -36,7 +36,9 @@ class Settings(BaseSettings):
 
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:
-    return Settings()
+    """Resolved on first use, not at import.
 
-
-settings = get_settings()
+    Importing a module must never require a fully populated .env — otherwise
+    tests, tooling, and `--help` all need production secrets to exist.
+    """
+    return Settings()  # type: ignore[call-arg]

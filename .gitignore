@@ -1,0 +1,26 @@
+# env
+.env
+.env.*
+!.env.example
+
+# python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+
+# node
+node_modules/
+dist/
+*.local
+
+# generated — regenerate with `npm run gen:types`
+frontend/src/types/api.ts
+
+# os / editor
+.DS_Store
+.vscode/
+.idea/

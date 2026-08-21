@@ -1,0 +1,45 @@
+{
+  "$comment": "Single source of truth for which prompt and model runs each task. Swapping a model or bumping a prompt is an edit here, not a code change. Every task's model_id and version get persisted with whatever the call produced — see backend/shared/llm.py.",
+  "tasks": {
+    "resume-parse": {
+      "prompt": "resume-parse.v1.md",
+      "model": "gemini-3-flash",
+      "version": "v1"
+    },
+    "screen-application": {
+      "prompt": "screen-application.v1.md",
+      "model": "gemini-3.1-pro",
+      "version": "v1"
+    },
+    "jd-to-rubric": {
+      "prompt": "jd-to-rubric.v1.md",
+      "model": "gemini-3.1-pro",
+      "version": "v1"
+    },
+    "interviewer-system": {
+      "prompt": "interviewer-system.v1.md",
+      "model": "gemini-2.5-flash-native-audio-preview-12-2025",
+      "version": "v1"
+    },
+    "score-answer-live": {
+      "prompt": "score-answer-live.v1.md",
+      "model": "gemini-3-flash",
+      "version": "v1"
+    },
+    "score-answer": {
+      "prompt": "score-answer.v1.md",
+      "model": "gemini-3.1-pro",
+      "version": "v1"
+    },
+    "score-holistic": {
+      "prompt": "score-holistic.v1.md",
+      "model": "gemini-3.1-pro",
+      "version": "v1"
+    },
+    "recruiter-chat": {
+      "prompt": "recruiter-chat.v1.md",
+      "model": "gemini-3.1-pro",
+      "version": "v1"
+    }
+  }
+}

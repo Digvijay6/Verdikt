@@ -89,6 +89,23 @@ call means two loops fighting — and LiveKit closed the Agno-plugin request as
 and scoring are single structured calls. And it adds framework concepts to learn
 on top of the domain concepts.
 
+**Asked again later — Agno *alongside* ADK, in lane 1?** Also no.
+
+- They solve the same problem. Two orchestration models and two failure modes
+  for a lane containing exactly one multi-step workflow.
+- Agno's multi-provider support is the usual argument for it, but Gemini is
+  mandated (D4), and `llm/registry.json` already gives per-task model swapping
+  (D5) — owned by us rather than rented from a framework.
+- On a Google hackathon, a third-party framework sitting next to Google's own
+  doing the same job reads as framework-collecting, not architecture.
+
+Honest caveat: even ADK is a close call on engineering merit alone.
+`question_builder` could be plain Python — a few `llm.run()` calls and a
+`while not valid` loop. ADK wins on its Loop/Parallel primitives, its
+step-through debugging UI, and being a judged Google product. That is one
+framework's worth of justification, and it is fully spent. **Do not add a
+second agent framework anywhere in this repo.**
+
 ## D9 · Google ADK before and after the call — never inside scoring
 
 **Chosen:** ADK in exactly two places.

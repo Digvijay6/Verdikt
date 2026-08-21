@@ -10,7 +10,11 @@ time on one item.
 | Docker Desktop | runs everything — `docker compose up` |
 | Supabase CLI | `brew install supabase/tap/supabase` — for migrations |
 | Node 20+ | only if running the frontend outside Docker |
-| Python 3.12+ | only if running the backend outside Docker |
+| Python 3.12 or 3.13 | only if running the backend outside Docker |
+
+Versions are pinned (`~=`) in `backend/pyproject.toml` and `frontend/package.json`
+rather than left open, so all three of you resolve the same tree. Open ranges
+produce bugs that reproduce for exactly one person.
 
 ## 1. Accounts and keys
 
@@ -68,6 +72,23 @@ docker compose up         # api :8000, frontend :5173
 - App: http://localhost:5173
 
 Lane 2 also needs the worker: `docker compose --profile voice up`
+
+**Verified working:** both images build, 27 tests pass inside the container on
+Python 3.12, the API serves OpenAPI, and Vite hot-reloads through the volume
+mount. Placeholder credentials are enough to boot — you only need real ones
+when something actually calls out.
+
+Lane 2's LiveKit dependencies are a separate extra (`.[voice]`) so lanes 1 and
+3 do not install an audio stack they never import. The compose `voice` profile
+builds with it; `api` does not.
+
+Useful:
+
+```bash
+docker compose run --rm --no-deps api python -m pytest tests/ -q   # tests
+docker compose exec api bash                                       # shell in
+docker compose build --no-cache api                                # clean rebuild
+```
 
 ## 3. Verify it actually works
 

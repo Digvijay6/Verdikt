@@ -127,10 +127,9 @@ async def apply(
             "Consent is required before an application can be processed.",
         )
 
-    job = repo.get_job(job_id)
-    if job is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "No such job")
-
+    # Local checks first — they are free and need no round trip. A malformed
+    # upload should not cost a database query, and on a public endpoint that
+    # ordering is also the cheapest defence against junk traffic.
     if resume.content_type != "application/pdf":
         raise HTTPException(
             status.HTTP_415_UNSUPPORTED_MEDIA_TYPE, "Resume must be a PDF"
@@ -143,6 +142,10 @@ async def apply(
         raise HTTPException(
             status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, "Resume exceeds 10MB"
         )
+
+    job = repo.get_job(job_id)
+    if job is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "No such job")
 
     candidate_id = repo.upsert_candidate(email=str(email), full_name=full_name, phone=phone)
 

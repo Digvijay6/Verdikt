@@ -2,27 +2,48 @@
 name = "verdikt-backend"
 version = "0.1.0"
 description = "Verdikt — API and voice worker"
-requires-python = ">=3.12"
+# 3.12, not latest: livekit-agents and its audio dependencies are not reliably
+# wheel-packaged for 3.13+, and building native extensions is not how anyone
+# should spend hackathon hours. The Dockerfile pins the same.
+requires-python = ">=3.12,<3.14"
 
+# Compatible-release pins (~=): patch and minor updates allowed, majors are not.
+# Open ranges resolve differently on each machine, which on a three-person team
+# produces bugs that only reproduce for one person.
 dependencies = [
-    "fastapi>=0.115",
-    "uvicorn[standard]>=0.32",
-    "pydantic[email]>=2.9",
-    "pydantic-settings>=2.6",
-    "pyjwt>=2.9",
-    "supabase>=2.10",
-    "google-genai>=1.0",
-    "livekit-agents>=1.6",
-    "livekit-plugins-google>=1.6",
-    "resend>=2.0",
-    "python-multipart>=0.0.12",
+    "fastapi~=0.141",
+    "uvicorn[standard]~=0.52",
+    "pydantic[email]~=2.13",
+    "pydantic-settings~=2.15",
+    "pyjwt~=2.13",
+    "supabase~=2.31",
+    "google-genai~=2.19",
+    "google-adk~=2.7",
+    "resend~=2.39",
+    "python-multipart~=0.0.32",
 ]
 
 [project.optional-dependencies]
-dev = ["ruff>=0.8", "pytest>=8.3", "pytest-asyncio>=0.24"]
+# Lane 2 only. Kept out of the base install so lanes 1 and 3 are not blocked by
+# audio dependencies they never import.
+voice = [
+    "livekit-agents~=1.6",
+    "livekit-plugins-google~=1.6",
+]
+dev = [
+    # pytest held at 8.x: pytest-asyncio still caps at pytest<9, and lane 2's
+    # voice worker will need async tests. Revisit when it supports 9.
+    "pytest~=8.3",
+    "pytest-asyncio~=0.24",
+    "ruff~=0.8",
+]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
-include = ["shared*", "api*", "voice*"]
+include = ["shared*", "api*", "voice*", "intake*"]
 
 [tool.ruff]
 line-length = 100

@@ -1,0 +1,54 @@
+# Local development. Three processes, one command.
+#
+# Everything stateful is hosted — Supabase, Gemini, LiveKit — so there is no
+# database or queue container here. What this buys you is that all three of you
+# run identical Python and Node versions, which is the actual problem on a team
+# where one person is on 3.12 and another on 3.14.
+#
+#   docker compose up            api + frontend  (lane 1 and 3 work)
+#   docker compose --profile voice up            adds the LiveKit worker
+#
+# The voice worker is behind a profile because lane 1 and lane 3 do not need it
+# running, and it will crash-loop without LiveKit credentials.
+
+services:
+  api:
+    build: ./backend
+    ports:
+      - "8000:8000"
+    env_file: [.env]
+    environment:
+      VERDIKT_LLM_DIR: /llm
+    volumes:
+      - ./backend:/app
+      # Prompts and the registry are read at runtime, so a prompt edit takes
+      # effect without a rebuild.
+      - ./llm:/llm
+      - /app/.venv
+    command: uvicorn api.main:app --host 0.0.0.0 --port 8000 --reload
+
+  voice:
+    build: ./backend
+    profiles: [voice]
+    env_file: [.env]
+    environment:
+      VERDIKT_LLM_DIR: /llm
+    volumes:
+      - ./backend:/app
+      - ./llm:/llm
+    command: python -m voice.agent dev
+    depends_on: [api]
+
+  frontend:
+    build: ./frontend
+    ports:
+      - "5173:5173"
+    env_file: [.env]
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    environment:
+      # Inside the compose network the API is reachable by service name, but the
+      # browser resolves this from the host, so it stays localhost.
+      VITE_API_URL: http://localhost:8000
+    depends_on: [api]

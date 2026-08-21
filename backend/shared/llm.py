@@ -12,6 +12,7 @@ which for a leaderboard is a correctness bug, not a logging gap (D5).
 from __future__ import annotations
 
 import json
+import os
 from functools import lru_cache
 from pathlib import Path
 from typing import Any, TypeVar
@@ -24,9 +25,15 @@ from .config import get_settings
 
 T = TypeVar("T", bound=BaseModel)
 
-REPO_ROOT = Path(__file__).resolve().parents[2]
-REGISTRY_PATH = REPO_ROOT / "llm" / "registry.json"
-PROMPTS_DIR = REPO_ROOT / "llm" / "prompts"
+# llm/ sits at the repo root, beside backend/. In Docker it is mounted at /llm
+# instead, so the location is overridable rather than inferred — path arithmetic
+# that happens to work in both places is the kind of thing that breaks silently
+# when someone moves a file.
+_LLM_DIR = Path(
+    os.environ.get("VERDIKT_LLM_DIR", Path(__file__).resolve().parents[2] / "llm")
+)
+REGISTRY_PATH = _LLM_DIR / "registry.json"
+PROMPTS_DIR = _LLM_DIR / "prompts"
 
 
 class Provenance(BaseModel):

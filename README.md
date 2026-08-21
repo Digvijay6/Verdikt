@@ -60,6 +60,15 @@ See `docs/contracts.md`.
 
 ## Running it
 
+**First time? Read [SETUP.md](SETUP.md)** — accounts, keys, and the
+Supabase bucket all need creating before any of this works.
+
+```bash
+docker compose up          # api :8000 · frontend :5173
+```
+
+Or without Docker:
+
 ```bash
 # backend — API
 cd backend && pip install -e ".[dev]"

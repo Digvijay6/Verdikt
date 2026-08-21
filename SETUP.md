@@ -1,0 +1,103 @@
+# Setup
+
+What each person needs before the repo runs. Roughly 30 minutes, plus DNS wait
+time on one item.
+
+## 0. Install
+
+| Tool | Why |
+|---|---|
+| Docker Desktop | runs everything — `docker compose up` |
+| Supabase CLI | `brew install supabase/tap/supabase` — for migrations |
+| Node 20+ | only if running the frontend outside Docker |
+| Python 3.12+ | only if running the backend outside Docker |
+
+## 1. Accounts and keys
+
+Fill these into `.env` at the repo root (copy `.env.example`). **Only one
+person needs to create these** — share the `.env` privately, never commit it.
+
+### Supabase → `SUPABASE_*`
+
+1. supabase.com → new project. Save the database password somewhere.
+2. Settings → API:
+   - Project URL → `SUPABASE_URL` and `VITE_SUPABASE_URL`
+   - `anon` key → `VITE_SUPABASE_ANON_KEY` (public by design)
+   - `service_role` key → `SUPABASE_SERVICE_KEY` (**server only, never in
+     VITE_ anything**)
+3. Settings → API → JWT Settings → JWT Secret → `SUPABASE_JWT_SECRET`
+4. Storage → new bucket named **`resumes`**, **not public**.
+5. Apply the schema:
+   ```bash
+   supabase link --project-ref <your-ref>
+   supabase db push
+   ```
+
+### Gemini → `GEMINI_API_KEY`
+
+aistudio.google.com → Get API key.
+
+**Check how the hackathon issues credits first.** If they hand out a GCP
+project with Vertex AI rather than an AI Studio key, the SDK needs different
+configuration and we should switch before building further on it.
+
+### LiveKit → `LIVEKIT_*`
+
+cloud.livekit.io → new project → Settings → Keys. Needed for lane 2; the API
+will not boot without the variables present, so put placeholders in if you are
+only working on lane 1.
+
+### Resend → `RESEND_API_KEY`
+
+resend.com → API Keys.
+
+**Start this one first — it has DNS lead time.** Until a domain is verified,
+Resend only delivers to your own account email, so nobody else can receive an
+interview invite. Domains → Add → add the DNS records at your registrar. For
+demo purposes their test domain works, but the invite email is a core part of
+the flow.
+
+## 2. Run it
+
+```bash
+cp .env.example .env      # then fill it in
+docker compose up         # api :8000, frontend :5173
+```
+
+- API docs: http://localhost:8000/docs
+- App: http://localhost:5173
+
+Lane 2 also needs the worker: `docker compose --profile voice up`
+
+## 3. Verify it actually works
+
+Structural tests pass already, but nothing has hit real Gemini or Supabase yet.
+This is the first real check:
+
+```bash
+# 1. tables exist
+supabase db push && echo "schema applied"
+
+# 2. backend healthy
+curl localhost:8000/health
+
+# 3. create a job — this triggers the ADK question_builder
+#    poll /intake/jobs until question_bank_status is "ready"
+
+# 4. read the generated question bank end to end
+```
+
+That last step is the one that matters and cannot be automated. Are the BARS
+anchors behaviourally observable? Would two people score the same answer the
+same way? Lane 2 scores against those exact words, so a vague anchor produces
+inconsistent scores that nothing downstream can repair.
+
+## 4. Known lead-time items
+
+- **Resend domain verification** — DNS propagation, start now
+- **Gemini model IDs in `llm/registry.json` are unverified.** They came from
+  documentation searches, not from a live API. Once you have a key, list the
+  models actually available to your account and correct the registry. An exact
+  model id is required; a wrong one fails at call time, not at startup.
+- **Supabase free tier pauses after a week of inactivity.** Fine during the
+  hackathon, worth knowing before a demo.

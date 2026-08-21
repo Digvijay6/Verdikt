@@ -3,6 +3,11 @@
 AI recruiter. Job posted → applications screened → AI voice interview → scored
 leaderboard → recruiter chat that explains every score → outreach.
 
+> **Start with [`CLAUDE.md`](CLAUDE.md)** — the shared context every person and
+> AI agent on this repo reads first. `docs/state.md` is what's built right now;
+> `docs/decisions.md` is what's already been settled and why. Check that one
+> before proposing an approach.
+
 ## Stack
 
 | Layer | Tech |

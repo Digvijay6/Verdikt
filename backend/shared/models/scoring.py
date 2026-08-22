@@ -80,6 +80,7 @@ class InterviewResult(BaseModel):
     """
 
     interview_id: str
+    org_id: str
     application_id: str
     job_id: str
 

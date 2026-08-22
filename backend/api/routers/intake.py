@@ -1,11 +1,15 @@
 """LANE 1 — Aditya. Application intake through interview invite.
 
 Two audiences on one router:
-  - recruiters, behind a Supabase JWT
+  - recruiters, behind a Supabase JWT, scoped to their organization
   - candidates, on the public application form, with no account at all
 
-The public endpoint returns immediately and runs the pipeline in the
-background, so nobody sits on a loading spinner waiting for a model call.
+Recruiter routes take the organization from the caller's membership, never from
+a path or query parameter. A client cannot ask for another tenant's data by
+changing a URL, because the URL never carries the tenant.
+
+The public endpoint is the one exception, and derives the org from the job it
+was given.
 """
 
 from __future__ import annotations
@@ -26,10 +30,16 @@ from fastapi import (
 )
 from pydantic import BaseModel, EmailStr
 
-from intake import pipeline, repo
+from intake import pipeline, repo, requirements
 from intake.question_builder import build_question_bank
 from shared.models.candidate import Application, ApplicationStatus
-from shared.models.job import Job, JobCreate
+from shared.models.job import (
+    Job,
+    JobCreate,
+    JobPipelineStats,
+    JobStatus,
+    ProfileSource,
+)
 
 from ..deps import Recruiter, current_recruiter
 
@@ -41,36 +51,90 @@ MAX_RESUME_BYTES = 10 * 1024 * 1024
 # --- jobs -----------------------------------------------------------------
 
 
+def _create_job_assets(job_id: str, org_id: str, extract_profile: bool) -> None:
+    """Background work after a job is created.
+
+    Requirement extraction runs first when asked for, because the hard checks
+    it produces gate every application that follows.
+    """
+    if extract_profile:
+        job = repo.get_job(job_id, org_id)
+        if job is not None:
+            profile, prov = requirements.extract_screening_profile(
+                job.jd_text, job.title, job.seniority
+            )
+            repo.save_screening_profile(
+                job_id, org_id, profile, ProfileSource.AI, prov.model_id
+            )
+    build_question_bank(job_id, org_id)
+
+
 @router.post("/jobs", response_model=Job, status_code=status.HTTP_201_CREATED)
 def create_job(
     payload: JobCreate,
     background: BackgroundTasks,
     recruiter: Recruiter = Depends(current_recruiter),
 ) -> Job:
-    """Create a job and start building its question bank.
+    """Create a job and start building its assets.
 
-    The bank takes a while — it is a multi-step workflow with a validation loop
-    — so the job comes back immediately with `question_bank_status: building`
-    and the client polls.
+    Omit `screening_profile` and Gemini extracts the hard requirements from the
+    JD. The question bank is a multi-step workflow with a validation loop, so
+    the job returns immediately with `question_bank_status: building` and the
+    client polls.
     """
-    job = repo.create_job(payload, created_by=recruiter.id)
-    background.add_task(build_question_bank, job.id)
+    job = repo.create_job(payload, org_id=recruiter.org_id, created_by=recruiter.id)
+    background.add_task(
+        _create_job_assets,
+        job.id,
+        recruiter.org_id,
+        extract_profile=payload.screening_profile is None,
+    )
     return job
 
 
 @router.get("/jobs", response_model=list[Job])
-def list_jobs(recruiter: Recruiter = Depends(current_recruiter)) -> list[Job]:
-    return repo.list_jobs()
+def list_jobs(
+    status_filter: JobStatus | None = None,
+    recruiter: Recruiter = Depends(current_recruiter),
+) -> list[Job]:
+    return repo.list_jobs(recruiter.org_id, status_filter)
 
 
 @router.get("/jobs/{job_id}", response_model=Job)
-def get_job(
-    job_id: str, recruiter: Recruiter = Depends(current_recruiter)
-) -> Job:
-    job = repo.get_job(job_id)
+def get_job(job_id: str, recruiter: Recruiter = Depends(current_recruiter)) -> Job:
+    job = repo.get_job(job_id, recruiter.org_id)
     if job is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "No such job")
     return job
+
+
+@router.get("/jobs/{job_id}/stats", response_model=JobPipelineStats)
+def job_stats(
+    job_id: str, recruiter: Recruiter = Depends(current_recruiter)
+) -> JobPipelineStats:
+    """Every dashboard tile in one query.
+
+    `needs_review` and `failed` are the two that want a human's attention:
+    the first is the compliance queue, the second is stuck work.
+    """
+    if repo.get_job(job_id, recruiter.org_id) is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "No such job")
+    return repo.pipeline_stats(recruiter.org_id, job_id)
+
+
+@router.post("/jobs/{job_id}/close", response_model=Job)
+def close_job(job_id: str, recruiter: Recruiter = Depends(current_recruiter)) -> Job:
+    """Stop accepting applications. Everything already collected stays.
+
+    A filled role is still an asset — its leaderboard, transcripts and scores
+    remain, and compliance.md requires decision records for 24 months anyway.
+    """
+    if repo.get_job(job_id, recruiter.org_id) is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "No such job")
+    repo.close_job(job_id, recruiter.org_id)
+    refreshed = repo.get_job(job_id, recruiter.org_id)
+    assert refreshed is not None
+    return refreshed
 
 
 @router.post("/jobs/{job_id}/rebuild-questions", status_code=status.HTTP_202_ACCEPTED)
@@ -85,9 +149,9 @@ def rebuild_questions(
     Interviews already scored under the old version stay interpretable; new ones
     are not comparable to them.
     """
-    if repo.get_job(job_id) is None:
+    if repo.get_job(job_id, recruiter.org_id) is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "No such job")
-    background.add_task(build_question_bank, job_id)
+    background.add_task(build_question_bank, job_id, recruiter.org_id)
     return {"status": "building"}
 
 
@@ -117,7 +181,7 @@ async def apply(
 ) -> ApplicationAccepted:
     """Public. No account — this is a candidate applying.
 
-    Consent is checked before the file is read, not after. Processing a resume
+    Consent is checked before the file is read, not after. Processing a résumé
     without recorded consent is the violation; doing it and then discarding the
     result is still the violation.
     """
@@ -127,9 +191,9 @@ async def apply(
             "Consent is required before an application can be processed.",
         )
 
-    # Local checks first — they are free and need no round trip. A malformed
-    # upload should not cost a database query, and on a public endpoint that
-    # ordering is also the cheapest defence against junk traffic.
+    # Local checks first — free, and no round trip. A malformed upload should
+    # not cost a database query, which on a public endpoint is also the cheapest
+    # defence against junk traffic.
     if resume.content_type != "application/pdf":
         raise HTTPException(
             status.HTTP_415_UNSUPPORTED_MEDIA_TYPE, "Resume must be a PDF"
@@ -143,26 +207,36 @@ async def apply(
             status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, "Resume exceeds 10MB"
         )
 
-    job = repo.get_job(job_id)
+    # The only unscoped lookup in the codebase: the candidate has no account, so
+    # the job id is what establishes the tenant. Every write below uses
+    # job.org_id rather than anything the client supplied.
+    job = repo.get_job_unscoped(job_id)
     if job is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "No such job")
+    if not job.accepts_applications:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            "This role is no longer accepting applications.",
+        )
 
-    candidate_id = repo.upsert_candidate(email=str(email), full_name=full_name, phone=phone)
+    org_id = job.org_id
+    candidate_id = repo.upsert_candidate(
+        org_id, email=str(email), full_name=full_name, phone=phone
+    )
 
-    path = f"{job_id}/{candidate_id}/{uuid.uuid4()}.pdf"
+    path = repo.resume_path(org_id, job_id, candidate_id, f"{uuid.uuid4()}.pdf")
     repo.upload_resume(path, data)
 
     application = repo.create_application(
+        org_id=org_id,
         job_id=job_id,
         candidate_id=candidate_id,
         resume_url=path,
         consent_given_at=datetime.now(timezone.utc),
     )
 
-    background.add_task(pipeline.process_application, application.id)
-    return ApplicationAccepted(
-        application_id=application.id, status=application.status
-    )
+    background.add_task(pipeline.process_application, application.id, org_id)
+    return ApplicationAccepted(application_id=application.id, status=application.status)
 
 
 @router.get("/applications", response_model=list[Application])
@@ -171,16 +245,20 @@ def list_applications(
     status_filter: ApplicationStatus | None = None,
     recruiter: Recruiter = Depends(current_recruiter),
 ) -> list[Application]:
-    """The review queue. Filter to `screened` for applications the model flagged
-    for a human — that is where the human-in-the-loop requirement lives."""
-    return repo.list_applications(job_id, status_filter)
+    """The review queue. Filter to `review` for applications the model flagged
+    for a human — that is where the human-in-the-loop requirement lives.
+
+    `rejected_screen` is worth looking at too: if an AI-extracted requirement is
+    quietly culling everyone, this is where it shows.
+    """
+    return repo.list_applications(recruiter.org_id, job_id, status_filter)
 
 
 @router.get("/applications/{application_id}", response_model=Application)
 def get_application(
     application_id: str, recruiter: Recruiter = Depends(current_recruiter)
 ) -> Application:
-    application = repo.get_application(application_id)
+    application = repo.get_application(application_id, recruiter.org_id)
     if application is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "No such application")
     return application
@@ -193,6 +271,7 @@ class Decision(StrEnum):
 
 class DecideRequest(BaseModel):
     decision: Decision
+    note: str | None = None
 
 
 @router.post("/applications/{application_id}/decide", response_model=Application)
@@ -203,19 +282,45 @@ def decide(
 ) -> Application:
     """A human resolving a `review`, or overriding the model either way.
 
+    Accepting works from any state, including `rejected_screen` — that is what
+    makes a bad hard-check reversible rather than final.
+
     This endpoint is the compliance story made concrete: every rejection that
-    reaches a candidate passed through a person here.
+    reaches a candidate passed through a person here, and that person is
+    recorded.
     """
-    application = repo.get_application(application_id)
+    application = repo.get_application(application_id, recruiter.org_id)
     if application is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "No such application")
 
     if body.decision is Decision.ACCEPT:
-        pipeline.send_invite(application_id)
+        pipeline.send_invite(application_id, recruiter.org_id)
+        repo.record_decision(
+            application_id,
+            recruiter.org_id,
+            ApplicationStatus.INVITED,
+            decided_by=recruiter.id,
+            note=body.note,
+        )
     else:
-        pipeline.reject(application_id)
+        # Which rejection it is depends on how far they got: someone who has
+        # been interviewed was not rejected by the screen.
+        interviewed = application.status in {
+            ApplicationStatus.INTERVIEWED,
+            ApplicationStatus.SCORED,
+            ApplicationStatus.ADVANCED,
+        }
+        repo.record_decision(
+            application_id,
+            recruiter.org_id,
+            ApplicationStatus.REJECTED_POST
+            if interviewed
+            else ApplicationStatus.REJECTED_SCREEN,
+            decided_by=recruiter.id,
+            note=body.note,
+        )
 
-    refreshed = repo.get_application(application_id)
+    refreshed = repo.get_application(application_id, recruiter.org_id)
     assert refreshed is not None
     return refreshed
 
@@ -224,9 +329,9 @@ def decide(
 def resume_url(
     application_id: str, recruiter: Recruiter = Depends(current_recruiter)
 ) -> dict[str, str]:
-    """Short-lived signed URL. Resumes live in a private bucket, so there is no
+    """Short-lived signed URL. Résumés live in a private bucket, so there is no
     permanent link to leak."""
-    application = repo.get_application(application_id)
+    application = repo.get_application(application_id, recruiter.org_id)
     if application is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "No such application")
     return {"url": repo.signed_resume_url(application.resume_url)}

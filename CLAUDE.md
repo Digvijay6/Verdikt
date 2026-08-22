@@ -29,9 +29,16 @@ Three owners, disjoint folders. Work only in your lane.
 
 Tables follow the same rule — everyone reads, only the owner writes:
 
-- 🔵 `job` `candidate` `application` `screening_decision` `interview_invite`
+- ⚪️ `organization` `membership` — tenancy, shared
+- 🔵 `job` `candidate` `application` `interview_invite`
 - 🟡 `interview` `question_instance` `integrity_event`
 - 🟢 `recruiter_chat_session` `outreach_message`
+
+**Every tenant-scoped table carries `org_id`**, and children reference parents
+through composite foreign keys `(org_id, parent_id)` — so a cross-org row cannot
+be inserted at all (D25). That stops bad *writes*; reads still need filtering,
+so every repo function takes `org_id`. Resolve it from the caller's membership,
+never from a URL or a token claim (D27).
 
 ## Hard rules
 

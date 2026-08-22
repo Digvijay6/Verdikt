@@ -1,41 +1,65 @@
 """Supabase access for lane 1's tables.
 
-Only this lane writes to job / candidate / application / interview_invite.
-Other lanes read them; if they need a write, they ask rather than reaching in.
+**Every function takes `org_id` and every query filters on it.** The composite
+foreign keys stop a cross-org row being *written*; this stops one being *read*.
+Both are needed — a missing filter on a read is just as much a leak, and the
+database cannot catch that one for us.
 
-Kept separate from the routers so the pipeline can be exercised without HTTP.
+Only this lane writes to job / candidate / application / interview_invite.
+Other lanes read them; if they need a write, they ask.
 """
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 
 from shared.db import db
 from shared.models.candidate import (
     Application,
     ApplicationStatus,
+    Candidate,
     HardCheckResult,
     ParsedResume,
     ScreeningDecision,
 )
-from shared.models.job import Job, JobCreate, Question, QuestionBankStatus
+from shared.models.job import (
+    Job,
+    JobCreate,
+    JobPipelineStats,
+    JobStatus,
+    ProfileSource,
+    Question,
+    QuestionBankStatus,
+    ScreeningProfile,
+)
 
 
 # --- job ------------------------------------------------------------------
 
 
-def create_job(payload: JobCreate, created_by: str | None) -> Job:
+def create_job(
+    payload: JobCreate,
+    org_id: str,
+    created_by: str,
+    profile: ScreeningProfile | None = None,
+    profile_source: ProfileSource = ProfileSource.MANUAL,
+    profile_model_id: str | None = None,
+) -> Job:
+    resolved = profile or payload.screening_profile or ScreeningProfile()
     row = (
         db()
         .table("job")
         .insert(
             {
+                "org_id": org_id,
                 "title": payload.title,
                 "seniority": payload.seniority,
                 "role_family": payload.role_family,
                 "jd_text": payload.jd_text,
-                "screening_profile": payload.screening_profile.model_dump(),
+                "screening_profile": resolved.model_dump(mode="json"),
+                "screening_profile_source": profile_source.value,
+                "screening_profile_model_id": profile_model_id,
                 "created_by": created_by,
             }
         )
@@ -45,25 +69,66 @@ def create_job(payload: JobCreate, created_by: str | None) -> Job:
     return Job.model_validate(row)
 
 
-def get_job(job_id: str) -> Job | None:
+def get_job(job_id: str, org_id: str) -> Job | None:
+    res = (
+        db()
+        .table("job")
+        .select("*")
+        .eq("id", job_id)
+        .eq("org_id", org_id)
+        .execute()
+    )
+    return Job.model_validate(res.data[0]) if res.data else None
+
+
+def get_job_unscoped(job_id: str) -> Job | None:
+    """Look up a job without knowing the organization.
+
+    Used by exactly one caller: the public application form. A candidate has no
+    account and no notion of an org — the job id in their URL is what
+    establishes which tenant they are applying to, and every write downstream
+    then uses `job.org_id`.
+
+    Nothing behind authentication may use this. Recruiter routes take the org
+    from the caller's membership, never from a path parameter.
+    """
     res = db().table("job").select("*").eq("id", job_id).execute()
     return Job.model_validate(res.data[0]) if res.data else None
 
 
-def list_jobs() -> list[Job]:
-    res = db().table("job").select("*").order("created_at", desc=True).execute()
-    return [Job.model_validate(r) for r in res.data]
+def list_jobs(org_id: str, status: JobStatus | None = None) -> list[Job]:
+    """Defaults to every status. The UI filters to `open`; closed roles keep
+    their leaderboards and stay one click away."""
+    q = db().table("job").select("*").eq("org_id", org_id)
+    if status:
+        q = q.eq("status", status.value)
+    return [
+        Job.model_validate(r)
+        for r in q.order("created_at", desc=True).execute().data
+    ]
+
+
+def close_job(job_id: str, org_id: str) -> None:
+    """Stops new applications. Everything already collected stays."""
+    db().table("job").update(
+        {
+            "status": JobStatus.CLOSED.value,
+            "closed_at": datetime.now(timezone.utc).isoformat(),
+        }
+    ).eq("id", job_id).eq("org_id", org_id).execute()
 
 
 def set_question_bank_status(
-    job_id: str, status: QuestionBankStatus, error: str | None = None
+    job_id: str, org_id: str, status: QuestionBankStatus, error: str | None = None
 ) -> None:
     db().table("job").update(
         {"question_bank_status": status.value, "question_bank_error": error}
-    ).eq("id", job_id).execute()
+    ).eq("id", job_id).eq("org_id", org_id).execute()
 
 
-def save_question_bank(job_id: str, questions: list[Question], rubric_version: str) -> None:
+def save_question_bank(
+    job_id: str, org_id: str, questions: list[Question], rubric_version: str
+) -> None:
     db().table("job").update(
         {
             "question_bank": [q.model_dump(mode="json") for q in questions],
@@ -71,24 +136,45 @@ def save_question_bank(job_id: str, questions: list[Question], rubric_version: s
             "question_bank_error": None,
             "rubric_version": rubric_version,
         }
-    ).eq("id", job_id).execute()
+    ).eq("id", job_id).eq("org_id", org_id).execute()
+
+
+def save_screening_profile(
+    job_id: str,
+    org_id: str,
+    profile: ScreeningProfile,
+    source: ProfileSource,
+    model_id: str | None = None,
+    reviewed_by: str | None = None,
+) -> None:
+    fields: dict[str, Any] = {
+        "screening_profile": profile.model_dump(mode="json"),
+        "screening_profile_source": source.value,
+        "screening_profile_model_id": model_id,
+    }
+    if reviewed_by:
+        fields["screening_profile_reviewed_by"] = reviewed_by
+        fields["screening_profile_reviewed_at"] = datetime.now(timezone.utc).isoformat()
+    db().table("job").update(fields).eq("id", job_id).eq("org_id", org_id).execute()
 
 
 # --- candidate ------------------------------------------------------------
 
 
 def upsert_candidate(
+    org_id: str,
     email: str,
     full_name: str | None = None,
     phone: str | None = None,
     location: str | None = None,
 ) -> str:
-    """One row per human, keyed on email (D20).
+    """One row per person **per organization** (D20 as amended).
 
-    Email is `citext` in the database, so casing is handled there rather than
-    depending on every caller remembering to normalise.
+    Scoped rather than global so company A cannot infer that someone also
+    applied to company B. Email is `citext` in the database, so casing is
+    handled there rather than by every caller remembering to normalise.
     """
-    fields: dict[str, Any] = {"email": email}
+    fields: dict[str, Any] = {"org_id": org_id, "email": email}
     for key, value in (
         ("full_name", full_name),
         ("phone", phone),
@@ -100,22 +186,37 @@ def upsert_candidate(
     row = (
         db()
         .table("candidate")
-        .upsert(fields, on_conflict="email")
+        .upsert(fields, on_conflict="org_id,email")
         .execute()
         .data[0]
     )
     return row["id"]
 
 
+def get_candidate(candidate_id: str, org_id: str) -> Candidate | None:
+    res = (
+        db()
+        .table("candidate")
+        .select("*")
+        .eq("id", candidate_id)
+        .eq("org_id", org_id)
+        .execute()
+    )
+    return Candidate.model_validate(res.data[0]) if res.data else None
+
+
 def enrich_candidate(
     candidate_id: str,
+    org_id: str,
     full_name: str | None = None,
     phone: str | None = None,
     location: str | None = None,
 ) -> None:
-    """Fill in fields the resume revealed that the application form did not ask
-    for. Only writes non-empty values, so a sparse resume never blanks out
-    details the candidate typed themselves."""
+    """Fill in what the résumé revealed that the form did not ask for.
+
+    Only writes non-empty values, so a sparse résumé never blanks out details
+    the candidate typed themselves.
+    """
     fields = {
         k: v
         for k, v in (
@@ -126,30 +227,33 @@ def enrich_candidate(
         if v
     }
     if fields:
-        db().table("candidate").update(fields).eq("id", candidate_id).execute()
-
-
-def get_candidate(candidate_id: str) -> dict | None:
-    res = db().table("candidate").select("*").eq("id", candidate_id).execute()
-    return res.data[0] if res.data else None
+        db().table("candidate").update(fields).eq("id", candidate_id).eq(
+            "org_id", org_id
+        ).execute()
 
 
 # --- application ----------------------------------------------------------
 
 
 def create_application(
-    job_id: str, candidate_id: str, resume_url: str, consent_given_at: datetime
+    org_id: str,
+    job_id: str,
+    candidate_id: str,
+    resume_url: str,
+    consent_given_at: datetime,
 ) -> Application:
     row = (
         db()
         .table("application")
         .upsert(
             {
+                "org_id": org_id,
                 "job_id": job_id,
                 "candidate_id": candidate_id,
                 "resume_url": resume_url,
                 "consent_given_at": consent_given_at.isoformat(),
                 "status": ApplicationStatus.RECEIVED.value,
+                "failure_reason": None,
             },
             on_conflict="job_id,candidate_id",
         )
@@ -159,17 +263,28 @@ def create_application(
     return Application.model_validate(row)
 
 
-def get_application(application_id: str) -> Application | None:
+def get_application(application_id: str, org_id: str) -> Application | None:
     res = (
-        db().table("application").select("*").eq("id", application_id).execute()
+        db()
+        .table("application")
+        .select("*")
+        .eq("id", application_id)
+        .eq("org_id", org_id)
+        .execute()
     )
     return Application.model_validate(res.data[0]) if res.data else None
 
 
 def list_applications(
-    job_id: str, status: ApplicationStatus | None = None
+    org_id: str, job_id: str, status: ApplicationStatus | None = None
 ) -> list[Application]:
-    q = db().table("application").select("*").eq("job_id", job_id)
+    q = (
+        db()
+        .table("application")
+        .select("*")
+        .eq("org_id", org_id)
+        .eq("job_id", job_id)
+    )
     if status:
         q = q.eq("status", status.value)
     return [
@@ -178,30 +293,78 @@ def list_applications(
     ]
 
 
-def set_status(application_id: str, status: ApplicationStatus) -> None:
-    db().table("application").update({"status": status.value}).eq(
-        "id", application_id
-    ).execute()
+def pipeline_stats(org_id: str, job_id: str) -> JobPipelineStats:
+    """Every dashboard tile from one grouped count."""
+    res = (
+        db()
+        .table("job_pipeline_stats")
+        .select("*")
+        .eq("org_id", org_id)
+        .eq("job_id", job_id)
+        .execute()
+    )
+    if res.data:
+        return JobPipelineStats.model_validate(res.data[0])
+    return JobPipelineStats(org_id=org_id, job_id=job_id)
 
 
-def save_parsed_resume(application_id: str, resume: ParsedResume) -> None:
+def set_status(
+    application_id: str,
+    org_id: str,
+    status: ApplicationStatus,
+    failure_reason: str | None = None,
+) -> None:
+    db().table("application").update(
+        {"status": status.value, "failure_reason": failure_reason}
+    ).eq("id", application_id).eq("org_id", org_id).execute()
+
+
+def record_decision(
+    application_id: str,
+    org_id: str,
+    status: ApplicationStatus,
+    decided_by: str,
+    note: str | None = None,
+) -> None:
+    """A human decision, with the human recorded.
+
+    compliance.md promises a person reviews every rejection. Without storing
+    which person, that promise cannot be evidenced when a candidate disputes it.
+    """
+    db().table("application").update(
+        {
+            "status": status.value,
+            "decided_by": decided_by,
+            "decided_at": datetime.now(timezone.utc).isoformat(),
+            "decision_note": note,
+        }
+    ).eq("id", application_id).eq("org_id", org_id).execute()
+
+
+def save_parsed_resume(
+    application_id: str, org_id: str, resume: ParsedResume
+) -> None:
     db().table("application").update(
         {
             "parsed_resume": resume.model_dump(mode="json"),
-            "status": ApplicationStatus.PARSED.value,
+            "status": ApplicationStatus.SCREENING.value,
         }
-    ).eq("id", application_id).execute()
+    ).eq("id", application_id).eq("org_id", org_id).execute()
 
 
-def save_hard_checks(application_id: str, checks: list[HardCheckResult]) -> None:
+def save_hard_checks(
+    application_id: str, org_id: str, checks: list[HardCheckResult]
+) -> None:
     db().table("application").update(
         {"hard_checks": [c.model_dump(mode="json") for c in checks]}
-    ).eq("id", application_id).execute()
+    ).eq("id", application_id).eq("org_id", org_id).execute()
 
 
 def save_screening(
     application_id: str,
+    org_id: str,
     decision: ScreeningDecision,
+    status: ApplicationStatus,
     model_id: str,
     prompt_version: str,
 ) -> None:
@@ -212,22 +375,23 @@ def save_screening(
             "screening": decision.model_dump(mode="json"),
             "screening_model_id": model_id,
             "screening_prompt_version": prompt_version,
-            "status": ApplicationStatus.SCREENED.value,
+            "status": status.value,
         }
-    ).eq("id", application_id).execute()
+    ).eq("id", application_id).eq("org_id", org_id).execute()
 
 
 # --- invites --------------------------------------------------------------
 
 
 def create_invite(
-    application_id: str, token_hash: str, expires_at: datetime
+    org_id: str, application_id: str, token_hash: str, expires_at: datetime
 ) -> str:
     row = (
         db()
         .table("interview_invite")
         .insert(
             {
+                "org_id": org_id,
                 "application_id": application_id,
                 "token_hash": token_hash,
                 "expires_at": expires_at.isoformat(),
@@ -244,8 +408,13 @@ def create_invite(
 RESUME_BUCKET = "resumes"
 
 
+def resume_path(org_id: str, job_id: str, candidate_id: str, filename: str) -> str:
+    """Org first, so bucket policies can scope by tenant the same way tables do."""
+    return f"{org_id}/{job_id}/{candidate_id}/{filename}"
+
+
 def upload_resume(path: str, data: bytes) -> str:
-    """Private bucket. The returned path is stored; readers get a signed URL."""
+    """Private bucket. The path is stored; readers get a short-lived signed URL."""
     db().storage.from_(RESUME_BUCKET).upload(
         path, data, {"content-type": "application/pdf", "upsert": "true"}
     )

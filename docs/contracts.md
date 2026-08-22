@@ -2,6 +2,10 @@
 
 Two handoffs. Everything else is internal to a lane.
 
+Both handoffs carry `org_id`. It is not decoration: lane 2 and lane 3 write
+rows whose composite foreign keys will reject them if the org does not match
+their parent (D25).
+
 ## Lane 1 → Lane 2 · `InterviewPackage`
 
 Assembled by `POST /interview/redeem`, passed into the LiveKit room as metadata.

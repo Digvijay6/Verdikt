@@ -23,6 +23,62 @@ type Job = {
   rubric_version: string;
 };
 
+type Stats = {
+  total: number;
+  processing: number;
+  needs_review: number;
+  rejected_screen: number;
+  rejected_post: number;
+  interview_remaining: number;
+  interview_ongoing: number;
+  scored: number;
+  advanced: number;
+  failed: number;
+};
+
+/**
+ * The pipeline at a glance. One grouped query behind it, not one per tile.
+ *
+ * `needs_review` and `failed` are surfaced separately because they are the two
+ * that need a person: the first is the compliance queue, the second is stuck
+ * work that would otherwise sit invisible.
+ */
+function JobStats({ jobId }: { jobId: string }) {
+  const { data } = useQuery({
+    queryKey: ["job-stats", jobId],
+    queryFn: () => api.get<Stats>(`/intake/jobs/${jobId}/stats`),
+    // Applications arrive and move through the pipeline on their own.
+    refetchInterval: 10_000,
+  });
+
+  if (!data || data.total === 0) {
+    return <p className="hint">No applications yet.</p>;
+  }
+
+  const tiles: Array<[string, number, boolean]> = [
+    ["Applications", data.total, false],
+    ["Processing", data.processing, false],
+    ["Needs review", data.needs_review, data.needs_review > 0],
+    ["Rejected", data.rejected_screen + data.rejected_post, false],
+    ["Interview pending", data.interview_remaining, false],
+    ["Interviewing now", data.interview_ongoing, false],
+    ["Scored", data.scored, false],
+    ["Advanced", data.advanced, false],
+    ["Failed", data.failed, data.failed > 0],
+  ];
+
+  return (
+    <div className="tiles">
+      {tiles.map(([label, value, attention]) => (
+        <div key={label} className={attention ? "tile attention" : "tile"}>
+          <b>{value}</b>
+          <span>{label}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export default function JobsPage() {
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
@@ -137,6 +193,8 @@ export default function JobsPage() {
           {job.question_bank_error && (
             <p role="alert" className="error">{job.question_bank_error}</p>
           )}
+
+          <JobStats jobId={job.id} />
 
           <footer>
             <Link to={`/applications/${job.id}`}>Review queue</Link>

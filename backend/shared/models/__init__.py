@@ -5,12 +5,17 @@ One source of truth, three consumers:
   Gemini   -> response_schema (google-genai takes these directly)
   Python   -> imported by both api/ and voice/
 
+Every tenant-scoped model carries `org_id`. The database enforces that it
+matches the parent row through composite foreign keys, so a cross-org row
+cannot be inserted even if a query forgets to filter.
+
 Changing anything here is a cross-lane change. Say so in the group chat first.
 """
 
 from .candidate import (
     Application,
     ApplicationStatus,
+    Candidate,
     Education,
     EmploymentPeriod,
     HardCheckResult,
@@ -31,11 +36,21 @@ from .interview import (
 from .job import (
     Job,
     JobCreate,
+    JobPipelineStats,
+    JobStatus,
+    ProfileSource,
     Question,
     QuestionBankStatus,
     QuestionType,
     RubricDimension,
     ScreeningProfile,
+)
+from .organization import (
+    Membership,
+    Organization,
+    OrganizationCreate,
+    Plan,
+    Role,
 )
 from .scoring import (
     AnswerScore,
@@ -47,9 +62,10 @@ from .scoring import (
 )
 
 __all__ = [
+    "AnswerScore",
     "Application",
     "ApplicationStatus",
-    "AnswerScore",
+    "Candidate",
     "DimensionScore",
     "Education",
     "EmploymentPeriod",
@@ -65,12 +81,20 @@ __all__ = [
     "InterviewStatus",
     "Job",
     "JobCreate",
+    "JobPipelineStats",
+    "JobStatus",
     "LiveSignal",
+    "Membership",
+    "Organization",
+    "OrganizationCreate",
     "ParsedResume",
+    "Plan",
+    "ProfileSource",
     "Question",
     "QuestionBankStatus",
     "QuestionType",
     "Recommendation",
+    "Role",
     "RubricDimension",
     "ScreeningDecision",
     "ScreeningOutcome",

@@ -27,22 +27,39 @@ from __future__ import annotations
 from functools import lru_cache
 
 import jwt
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, Header, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jwt import PyJWKClient
 from pydantic import BaseModel
 
+from shared import tenancy
 from shared.config import get_settings
+from shared.models.organization import Role
 
 bearer = HTTPBearer(auto_error=True)
 
 ASYMMETRIC_ALGS = ("ES256", "RS256")
 
 
-class Recruiter(BaseModel):
+class AuthenticatedUser(BaseModel):
+    """A verified identity, before any organization is resolved."""
+
     id: str
     email: str
-    org_id: str | None = None
+
+
+class Recruiter(BaseModel):
+    """A verified identity acting for a specific organization.
+
+    `org_id` is not optional and does not come from the token. It is resolved
+    from `membership` on every request, so revoking someone's access takes
+    effect immediately rather than whenever their session next refreshes.
+    """
+
+    id: str
+    email: str
+    org_id: str
+    role: Role
 
 
 @lru_cache(maxsize=1)
@@ -86,10 +103,10 @@ def _decode(token: str) -> dict:
     raise jwt.InvalidTokenError(f"Unsupported token algorithm: {alg}")
 
 
-def current_recruiter(
+def current_user(
     creds: HTTPAuthorizationCredentials = Depends(bearer),
-) -> Recruiter:
-    """Verify a Supabase Auth JWT and return the recruiter."""
+) -> AuthenticatedUser:
+    """Verify a Supabase Auth JWT. Says who, not what they may do."""
     try:
         claims = _decode(creds.credentials)
     except jwt.PyJWTError as exc:
@@ -98,8 +115,58 @@ def current_recruiter(
             detail="Invalid or expired token",
         ) from exc
 
+    return AuthenticatedUser(id=claims["sub"], email=claims.get("email", ""))
+
+
+def current_recruiter(
+    user: AuthenticatedUser = Depends(current_user),
+    x_org_id: str | None = Header(
+        None,
+        description=(
+            "Which organization to act for. Only needed by users who belong to "
+            "more than one; otherwise their single membership is used."
+        ),
+    ),
+) -> Recruiter:
+    """Resolve the organization this request acts on behalf of.
+
+    Most users belong to exactly one organization, so the header is optional and
+    the UI never has to show an org switcher. Agencies and consultants belong to
+    several, and must say which — guessing on their behalf would silently write
+    a job into the wrong client's account.
+    """
+    memberships = tenancy.memberships_for_user(user.id)
+
+    if not memberships:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="This account does not belong to any organization.",
+        )
+
+    if x_org_id is None:
+        if len(memberships) > 1:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=(
+                    "You belong to multiple organizations. "
+                    "Send X-Org-Id to say which one."
+                ),
+            )
+        membership = memberships[0]
+    else:
+        found = next((m for m in memberships if m.org_id == x_org_id), None)
+        if found is None:
+            # Deliberately 403 rather than 404: distinguishing "no such org"
+            # from "not yours" would let anyone probe for which org ids exist.
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You do not have access to that organization.",
+            )
+        membership = found
+
     return Recruiter(
-        id=claims["sub"],
-        email=claims.get("email", ""),
-        org_id=(claims.get("app_metadata") or {}).get("org_id"),
+        id=user.id,
+        email=user.email,
+        org_id=membership.org_id,
+        role=membership.role,
     )

@@ -26,6 +26,7 @@ class InterviewPackage(BaseModel):
     """
 
     interview_id: str
+    org_id: str
     job_id: str
     job_title: str
     seniority: str
@@ -54,6 +55,7 @@ class TranscriptTurn(BaseModel):
 
 class Interview(BaseModel):
     id: str
+    org_id: str
     application_id: str
     job_id: str
     status: InterviewStatus
@@ -85,6 +87,7 @@ class IntegrityEventType(StrEnum):
 
 
 class IntegrityEvent(BaseModel):
+    org_id: str
     interview_id: str
     type: IntegrityEventType
     severity: float = Field(ge=0.0, le=1.0)

@@ -225,12 +225,12 @@ def _job_brief(job) -> str:
     return "\n".join(lines)
 
 
-async def build_question_bank_async(job_id: str) -> list[Question]:
-    job = repo.get_job(job_id)
+async def build_question_bank_async(job_id: str, org_id: str) -> list[Question]:
+    job = repo.get_job(job_id, org_id)
     if job is None:
         raise ValueError(f"No job {job_id}")
 
-    repo.set_question_bank_status(job_id, QuestionBankStatus.BUILDING)
+    repo.set_question_bank_status(job_id, org_id, QuestionBankStatus.BUILDING)
 
     runner = InMemoryRunner(agent=build_workflow(), app_name=APP_NAME)
     try:
@@ -263,7 +263,7 @@ async def build_question_bank_async(job_id: str) -> list[Question]:
     # Bump the rubric version: these anchors are what lane 2 scores against, so
     # a new bank means scores are not comparable to the previous one.
     version = _next_version(job.rubric_version)
-    repo.save_question_bank(job_id, questions, version)
+    repo.save_question_bank(job_id, org_id, questions, version)
     log.info("built %d questions for job %s (%s)", len(questions), job_id, version)
     return questions
 
@@ -273,7 +273,7 @@ def _next_version(current: str) -> str:
     return f"v{int(match.group(1)) + 1}" if match else "v1"
 
 
-def build_question_bank(job_id: str) -> None:
+def build_question_bank(job_id: str, org_id: str) -> None:
     """Sync entry point for FastAPI BackgroundTasks.
 
     Failures are recorded on the job rather than raised — this runs detached
@@ -281,9 +281,9 @@ def build_question_bank(job_id: str) -> None:
     job stuck on `building` forever.
     """
     try:
-        asyncio.run(build_question_bank_async(job_id))
+        asyncio.run(build_question_bank_async(job_id, org_id))
     except Exception as exc:
         log.exception("question bank build failed for job %s", job_id)
         repo.set_question_bank_status(
-            job_id, QuestionBankStatus.FAILED, error=str(exc)[:500]
+            job_id, org_id, QuestionBankStatus.FAILED, error=str(exc)[:500]
         )

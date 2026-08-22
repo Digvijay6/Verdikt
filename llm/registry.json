@@ -11,6 +11,11 @@
       "model": "gemini-3.1-pro",
       "version": "v1"
     },
+    "jd-to-requirements": {
+      "prompt": "jd-to-requirements.v1.md",
+      "model": "gemini-3.1-pro",
+      "version": "v1"
+    },
 
     "question-builder": {
       "competency-extractor": {

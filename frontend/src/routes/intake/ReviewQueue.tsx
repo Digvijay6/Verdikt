@@ -36,9 +36,21 @@ type Application = {
   screening_prompt_version: string | null;
 };
 
+/** Mirrors ApplicationStatus in shared/models/candidate.py. */
+const FILTERS = [
+  { value: "review", label: "Needs review" },
+  { value: "rejected_screen", label: "Rejected at screening" },
+  { value: "invited", label: "Invited, not started" },
+  { value: "interviewing", label: "Interviewing now" },
+  { value: "scored", label: "Scored" },
+  { value: "rejected_post", label: "Rejected after interview" },
+  { value: "advanced", label: "Advanced" },
+  { value: "failed", label: "Failed — needs a retry" },
+] as const;
+
 export default function ReviewQueue() {
   const { jobId = "" } = useParams();
-  const [status, setStatus] = useState("screened");
+  const [status, setStatus] = useState("review");
   const qc = useQueryClient();
 
   const { data, isLoading } = useQuery({
@@ -62,10 +74,20 @@ export default function ReviewQueue() {
       <h1>Review queue</h1>
 
       <select value={status} onChange={(e) => setStatus(e.target.value)}>
-        <option value="screened">Awaiting review</option>
-        <option value="invited">Invited</option>
-        <option value="rejected">Rejected</option>
+        {FILTERS.map((f) => (
+          <option key={f.value} value={f.value}>
+            {f.label}
+          </option>
+        ))}
       </select>
+
+      {status === "rejected_screen" && (
+        <p className="hint">
+          Rejected by the hard requirements, before any interview. Worth
+          scanning — if a requirement was extracted wrongly it shows up here as
+          a pile of good candidates. Inviting one from here overrides the filter.
+        </p>
+      )}
 
       {data?.length === 0 && <p>Nothing here.</p>}
 

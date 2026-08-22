@@ -310,6 +310,107 @@ an audio toolchain they do not import. One image serves both processes via an
 
 ---
 
+## D25 · Tenancy enforced by the database, not by discipline
+
+**Chosen:** every tenant-scoped table carries `org_id`, and every child
+references its parent through a **composite** foreign key `(org_id, parent_id)`.
+
+```sql
+job         UNIQUE (org_id, id)
+application (org_id, job_id) -> job (org_id, id)
+interview   (org_id, application_id) -> application (org_id, id)
+```
+
+**Rejected:** plain `org_id` columns filtered in application code.
+**Why:** the plain version works until someone forgets a `WHERE` clause once,
+and the failure mode is showing one company their competitor's candidates.
+With composite keys, a row whose `org_id` disagrees with its parent's **cannot
+be inserted** — Postgres refuses it. Forgetting a filter becomes a visible bug
+rather than a silent cross-tenant leak.
+
+**Verified**, not assumed: attaching an application to another org's job fails
+on `application_org_id_job_id_fkey`, and pairing an org's job with another org's
+candidate fails on `application_org_id_candidate_id_fkey`.
+
+**Reads still need filtering.** The database stops bad *writes*; a missing
+filter on a *read* leaks just as much and Postgres cannot catch it. Every
+function in `intake/repo.py` therefore takes `org_id` and filters on it.
+
+**One deliberate exception:** `repo.get_job_unscoped()`, used by the public
+application form only. A candidate has no account, so the job id in their URL is
+what establishes the tenant. Everything downstream then uses `job.org_id` rather
+than anything the client sent. Nothing behind authentication may call it.
+
+## D26 · Candidates are per-organization (amends D20)
+
+**Chosen:** `candidate` is unique on `(org_id, email)`, not on `email`.
+**Why:** a global candidate row means the same person applying to two of your
+customers shares one record — and company A can then infer that they also
+applied to company B. That is a privacy leak, not a modelling preference.
+**Cost accepted:** no cross-org deduplication, which is a feature nobody wants.
+
+## D27 · Organization comes from membership, never from the URL or the token
+
+**Chosen:** `current_recruiter` resolves the org from the `membership` table on
+every request. Users with one membership need nothing; users with several send
+`X-Org-Id`.
+
+**Why not the JWT:** a token claim goes stale the moment access changes.
+Revoking someone should take effect immediately, not when their session next
+refreshes.
+
+**Why not a path parameter:** if the URL carried the tenant, a client could ask
+for another tenant's data by editing it. The URL never carries the tenant.
+
+**Why membership rather than `user.org_id`:** agencies and consultants work
+across companies. Ten lines of SQL now; rewriting every query later.
+
+**Why 403 and not 404** for an org the user does not belong to: distinguishing
+"no such organization" from "not yours" lets anyone probe for which org ids
+exist.
+
+## D28 · AI-extracted hard requirements, ungated but visible
+
+**Chosen:** omit `screening_profile` when creating a job and Gemini extracts the
+hard requirements from the JD. Provenance is recorded. **No approval gate.**
+
+**Rejected:** blocking a job from accepting applications until a human approves
+the extracted requirements.
+**Why rejected:** the meaningful human decision is at the leaderboard — which
+candidates to bring in for a real interview. Gating the pipeline before that
+adds friction to the thing the product exists to automate.
+
+**The risk this leaves, and how it is handled:** candidates rejected by the hard
+checks never reach a leaderboard, so leaderboard review cannot cover them. If
+the model misreads "5+ years preferred" as a hard minimum, most applicants
+vanish silently. So instead of a gate:
+
+- Screen-rejected candidates land in `rejected_screen` and stay visible on the
+  dashboard as a counted tile, not deleted
+- Inviting one from that list overrides the filter — the rejection is reversible
+- The extraction prompt is written to be extremely conservative: when torn
+  between required and preferred, it must choose preferred, because a weak
+  candidate reaching the screen costs one cheap model call while a strong one
+  wrongly filtered is gone and nobody finds out
+
+**Net:** stronger than a rubber-stamped approval checkbox would have been, and
+without the friction.
+
+## D29 · Closed jobs keep everything
+
+**Chosen:** `job.status` of `draft | open | closed | archived`. Closing stops
+new applications and changes nothing else — the leaderboard, transcripts,
+scores and question bank all remain.
+**Why:** a filled role is still an asset to the company (who did we interview,
+reopen a similar role and reuse the bank), and `compliance.md` requires decision
+records for 24 months regardless.
+**Consequence to handle later:** this collides with a candidate's right to
+erasure. The resolution is the standard one — delete personal data, keep the
+anonymised decision record. Per-org candidates (D26) already make that
+separable.
+
+---
+
 ---
 
 ## Provenance of the original plan

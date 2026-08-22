@@ -126,12 +126,31 @@ def send_invite(application_id: str, org_id: str) -> None:
     token, token_hash, expires_at = invites.mint_token()
     repo.create_invite(org_id, application_id, token_hash, expires_at)
 
-    invites.send_invite_email(
-        to_email=str(candidate.email),
-        candidate_name=candidate.full_name,
-        job=job,
-        token=token,  # the only moment the raw token exists
-        expires_at=expires_at,
-    )
+    # Status is set *before* the email, and an email failure does not undo it.
+    # The decision to invite someone and the delivery of that invitation are
+    # separate facts: a Resend outage should not erase an accept, and it should
+    # not look identical to a candidate who was never accepted at all.
     repo.set_status(application_id, org_id, ApplicationStatus.INVITED)
+
+    try:
+        invites.send_invite_email(
+            to_email=str(candidate.email),
+            candidate_name=candidate.full_name,
+            job=job,
+            token=token,  # the only moment the raw token exists
+            expires_at=expires_at,
+        )
+    except Exception as exc:
+        # The invite is valid and redeemable — the candidate simply has not been
+        # told about it. Recorded so a recruiter can see it and resend, rather
+        # than the person sitting in `invited` forever wondering.
+        log.exception("invite email failed for application %s", application_id)
+        repo.set_status(
+            application_id,
+            org_id,
+            ApplicationStatus.INVITED,
+            failure_reason=f"Invite email not delivered: {str(exc)[:400]}",
+        )
+        return
+
     log.info("invited application %s, expires %s", application_id, expires_at)

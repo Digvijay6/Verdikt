@@ -11,6 +11,9 @@ class Settings(BaseSettings):
     # Supabase
     supabase_url: str
     supabase_service_key: str  # server-side only, never sent to the browser
+    # Public by design. Only needed so scripts/seed_dev.py can sign in through
+    # the same path the browser uses; the API itself never needs it.
+    supabase_anon_key: str | None = None
     # Legacy HS256 shared secret. Optional: new projects sign with ES256 and
     # are verified against the JWKS endpoint instead. Only set this if the
     # project still issues HS256 tokens. See api/deps.py.

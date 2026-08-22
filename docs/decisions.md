@@ -257,6 +257,59 @@ migrating.
 
 ---
 
+## D23 · Verify Supabase JWTs both ways, asymmetric first
+
+**Chosen:** `api/deps.py` verifies ES256/RS256 against the project's JWKS
+endpoint, and falls back to HS256 only when a shared secret is configured.
+`SUPABASE_JWT_SECRET` is optional and left blank on new projects.
+
+**Why this exists at all:** Supabase renamed its API keys — *publishable*
+(`sb_publishable_…`) replaces `anon`, *secret* (`sb_secret_…`) replaces
+`service_role` — and new projects sign session tokens with **ES256**, not the
+legacy HS256 shared secret. The original `deps.py` only did HS256, so recruiter
+auth would have failed on **every** request on a freshly created project. Not
+degraded — completely broken, and only discoverable at the moment someone first
+tries to log in.
+
+**On algorithm confusion:** the algorithm is read from the token header, which
+is normally where these attacks start. It is safe here because each branch is
+pinned to a disjoint algorithm list and a distinct key, and the HS256 branch is
+unreachable unless a shared secret is actually configured — an HS256 token
+arriving at a project with no secret did not come from that project.
+
+**Covered by 8 tests** against real signatures rather than mocked verification:
+wrong signing key, expired, wrong audience, `alg: none`, and HS256 with no
+secret configured.
+
+**The general lesson, worth keeping:** the *library* versions were right because
+pip resolves them. The *dashboard naming* was wrong because it only lived in
+memory. Anything verifiable by running should be verified by running.
+
+## D24 · Docker for parity, not for services
+
+**Chosen:** compose runs the API, the frontend, and (behind a profile) the voice
+worker. Nothing stateful runs locally — Supabase, Gemini and LiveKit are all
+hosted.
+
+**Why bother then:** the value is not isolation, it is that three people on
+three machines run identical Python and Node. Version drift across a team
+produces bugs that reproduce for exactly one person, which are the most
+expensive kind to chase.
+
+**Python pinned to 3.12**, and all dependencies pinned with `~=` rather than
+open `>=` ranges, checked against current PyPI releases.
+
+**The Supabase CLI is deliberately *not* in the image.** It is a host-side dev
+tool that talks to the hosted project over the network — not part of the running
+app. Use `npx supabase@latest`; Homebrew requires current Command Line Tools,
+which on macOS 26.1 means a 7.4 GB OS update for no benefit.
+
+**Lane 2's LiveKit stack is a `[voice]` extra**, so lanes 1 and 3 never install
+an audio toolchain they do not import. One image serves both processes via an
+`EXTRAS` build arg.
+
+---
+
 ---
 
 ## Provenance of the original plan

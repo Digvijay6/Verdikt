@@ -8,7 +8,7 @@ time on one item.
 | Tool | Why |
 |---|---|
 | Docker Desktop | runs everything — `docker compose up` |
-| Supabase CLI | `brew install supabase/tap/supabase` — for migrations |
+| Supabase CLI | **`npx supabase@latest <cmd>`** — no install needed |
 | Node 20+ | only if running the frontend outside Docker |
 | Python 3.12 or 3.13 | only if running the backend outside Docker |
 
@@ -39,9 +39,18 @@ person needs to create these** — share the `.env` privately, never commit it.
 4. Storage → new bucket named **`resumes`**, **not public**.
 5. Apply the schema:
    ```bash
-   supabase link --project-ref <your-ref>
-   supabase db push
+   npx supabase@latest login
+   npx supabase@latest link --project-ref <your-ref>
+   npx supabase@latest db push          # asks for the database password
    ```
+
+   Use `npx`, not Homebrew. `brew install supabase/tap/supabase` needs current
+   Command Line Tools, which on macOS 26.x means a 7.4 GB OS update. `npx`
+   fetches a prebuilt binary and avoids the whole problem.
+
+   **Paste each key onto a single line.** A wrapped key breaks
+   `docker compose` with `invalid environment variable`, and the error does not
+   tell you which line.
 
 ### Gemini → `GEMINI_API_KEY`
 

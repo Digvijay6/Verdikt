@@ -123,6 +123,54 @@ def job_stats(
     return repo.pipeline_stats(recruiter.org_id, job_id)
 
 
+class JobUpdate(BaseModel):
+    """Every field is optional — send only what changed."""
+
+    title: str | None = None
+    seniority: str | None = None
+    role_family: str | None = None
+    jd_text: str | None = None
+
+
+@router.put("/jobs/{job_id}", response_model=Job)
+def update_job(
+    job_id: str,
+    payload: JobUpdate,
+    background: BackgroundTasks,
+    rebuild_questions: bool = True,
+    recruiter: Recruiter = Depends(current_recruiter),
+) -> Job:
+    """Edit the job. Typos, a changed scope, a requirement that moved.
+
+    **Editing the JD invalidates the question bank**, because the questions and
+    their anchors were generated from it. `rebuild_questions` therefore defaults
+    to true whenever `jd_text` changes: leaving a bank that interrogates a role
+    the posting no longer describes is worse than the few minutes a rebuild
+    costs. Pass `?rebuild_questions=false` to skip it for a trivial edit like
+    fixing a spelling mistake.
+
+    The screening profile is deliberately *not* re-extracted. Once a recruiter
+    has reviewed those requirements, silently regenerating them because a
+    sentence changed would discard a human decision without telling anyone. Use
+    PUT /screening-profile to change them.
+    """
+    if repo.get_job(job_id, recruiter.org_id) is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "No such job")
+
+    fields = payload.model_dump(exclude_none=True)
+    if not fields:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Nothing to update")
+
+    repo.update_job(job_id, recruiter.org_id, fields)
+
+    if "jd_text" in fields and rebuild_questions:
+        background.add_task(build_question_bank, job_id, recruiter.org_id)
+
+    refreshed = repo.get_job(job_id, recruiter.org_id)
+    assert refreshed is not None
+    return refreshed
+
+
 @router.put("/jobs/{job_id}/screening-profile", response_model=Job)
 def update_screening_profile(
     job_id: str,

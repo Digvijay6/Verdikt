@@ -108,6 +108,18 @@ def list_jobs(org_id: str, status: JobStatus | None = None) -> list[Job]:
     ]
 
 
+def update_job(job_id: str, org_id: str, fields: dict[str, Any]) -> None:
+    """Patch the job's descriptive fields.
+
+    Only writes what was supplied, so a caller sending one field does not blank
+    the rest.
+    """
+    if fields:
+        db().table("job").update(fields).eq("id", job_id).eq(
+            "org_id", org_id
+        ).execute()
+
+
 def close_job(job_id: str, org_id: str) -> None:
     """Stops new applications. Everything already collected stays."""
     db().table("job").update(

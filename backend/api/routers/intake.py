@@ -39,6 +39,7 @@ from shared.models.job import (
     JobPipelineStats,
     JobStatus,
     ProfileSource,
+    ScreeningProfile,
 )
 
 from ..deps import Recruiter, current_recruiter
@@ -120,6 +121,40 @@ def job_stats(
     if repo.get_job(job_id, recruiter.org_id) is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "No such job")
     return repo.pipeline_stats(recruiter.org_id, job_id)
+
+
+@router.put("/jobs/{job_id}/screening-profile", response_model=Job)
+def update_screening_profile(
+    job_id: str,
+    profile: ScreeningProfile,
+    recruiter: Recruiter = Depends(current_recruiter),
+) -> Job:
+    """Correct the hard requirements.
+
+    The counterpart to AI extraction (D28). Requirements auto-reject people, so
+    a recruiter who spots a wrong one — "5+ years preferred" read as a hard
+    minimum, a skill that is not really mandatory — needs to be able to fix it
+    without recreating the job.
+
+    Marks the profile reviewed and attributes it, which also converts an
+    AI-drafted profile into a human-owned one.
+
+    Only affects applications screened *after* this. Anyone already in
+    `rejected_screen` stays there until invited from that list.
+    """
+    if repo.get_job(job_id, recruiter.org_id) is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "No such job")
+
+    repo.save_screening_profile(
+        job_id,
+        recruiter.org_id,
+        profile,
+        source=ProfileSource.MANUAL,
+        reviewed_by=recruiter.id,
+    )
+    refreshed = repo.get_job(job_id, recruiter.org_id)
+    assert refreshed is not None
+    return refreshed
 
 
 @router.post("/jobs/{job_id}/close", response_model=Job)

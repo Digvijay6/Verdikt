@@ -253,6 +253,20 @@ def create_application(
                 "resume_url": resume_url,
                 "consent_given_at": consent_given_at.isoformat(),
                 "status": ApplicationStatus.RECEIVED.value,
+                # Everything below is derived from the *previous* resume, so a
+                # new upload invalidates all of it. Without this reset, someone
+                # re-applying with an updated CV inherits the decision made
+                # about their old one — and if the new resume is stopped by the
+                # hard checks, that stale decision is never overwritten and sits
+                # there attached to a document it was never about.
+                "parsed_resume": None,
+                "hard_checks": [],
+                "screening": None,
+                "screening_model_id": None,
+                "screening_prompt_version": None,
+                "decided_by": None,
+                "decided_at": None,
+                "decision_note": None,
                 "failure_reason": None,
             },
             on_conflict="job_id,candidate_id",

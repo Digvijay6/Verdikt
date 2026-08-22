@@ -31,9 +31,20 @@ Three people, one repo, disjoint folders.
 
 **Tables follow the same rule** — everyone reads, only the owner writes:
 
-- 🔵 `job` `candidate` `application` `screening_decision` `interview_invite`
+- ⚪️ `organization` `membership` — tenancy, shared
+- 🔵 `job` `candidate` `application` `interview_invite`
 - 🟡 `interview` `question_instance` `integrity_event`
 - 🟢 `recruiter_chat_session` `outreach_message`
+
+### Tenancy — read this before writing a query
+
+Multiple companies use this. Every tenant-scoped table carries `org_id`, and
+children reference parents through composite foreign keys `(org_id, parent_id)`,
+so a cross-org row **cannot be inserted** — Postgres refuses it.
+
+That covers writes. Reads are on you: take `org_id` and filter on it. Resolve it
+from `current_recruiter`, never from a path parameter and never from a token
+claim. See D25–D27.
 
 ### Rules that keep this conflict-free
 

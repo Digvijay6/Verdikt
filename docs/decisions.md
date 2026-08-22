@@ -411,6 +411,37 @@ separable.
 
 ---
 
+## D30 · Every prompt that reasons about time gets today's date
+
+**Chosen:** the current date is injected into `resume-parse` and
+`screen-application`, and both take an optional `today` so tests can pin it.
+
+**Why:** a language model does not know what day it is. Asked to interpret
+"Present" on a resume, it places the present somewhere near its training
+cutoff — silently, and with a plausible-looking number.
+
+**Measured, not theorised.** The same resume, running from June 2018 with a
+current role from March 2021:
+
+| | total_years_experience |
+|---|---|
+| Without a date anchor | 6.8 |
+| With `today = 2026-08-22` | 8.2 |
+| Actual | 8.1 |
+
+Off by 1.4 years, in the direction that undercounts. On a job with a five-year
+minimum that is the difference between an interview and a rejection the
+candidate is never given a reason for.
+
+**The general rule:** anything a model cannot know from its inputs must be
+supplied explicitly. The date is the obvious one; it will not be the last.
+
+**Prompt bumped to `resume-parse.v2.md`** rather than edited in place, per D5 —
+years computed under v1 are not comparable to v2, and the version stamped on
+each application is what makes that visible.
+
+---
+
 ---
 
 ## Provenance of the original plan

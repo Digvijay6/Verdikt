@@ -11,7 +11,10 @@ class Settings(BaseSettings):
     # Supabase
     supabase_url: str
     supabase_service_key: str  # server-side only, never sent to the browser
-    supabase_jwt_secret: str  # verifies recruiter JWTs in api/deps.py
+    # Legacy HS256 shared secret. Optional: new projects sign with ES256 and
+    # are verified against the JWKS endpoint instead. Only set this if the
+    # project still issues HS256 tokens. See api/deps.py.
+    supabase_jwt_secret: str | None = None
 
     # Gemini
     gemini_api_key: str

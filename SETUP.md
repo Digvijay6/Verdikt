@@ -24,12 +24,18 @@ person needs to create these** — share the `.env` privately, never commit it.
 ### Supabase → `SUPABASE_*`
 
 1. supabase.com → new project. Save the database password somewhere.
-2. Settings → API:
+2. Settings → **API Keys**. Supabase renamed these — new projects show
+   *publishable* and *secret* rather than *anon* and *service_role*:
    - Project URL → `SUPABASE_URL` and `VITE_SUPABASE_URL`
-   - `anon` key → `VITE_SUPABASE_ANON_KEY` (public by design)
-   - `service_role` key → `SUPABASE_SERVICE_KEY` (**server only, never in
-     VITE_ anything**)
-3. Settings → API → JWT Settings → JWT Secret → `SUPABASE_JWT_SECRET`
+   - **Publishable key** (`sb_publishable_…`) → `VITE_SUPABASE_ANON_KEY`.
+     Public by design.
+   - **Secret key** (`sb_secret_…`) → `SUPABASE_SERVICE_KEY`. Bypasses every
+     security rule — **server only, never in a `VITE_` variable.** Supabase
+     now returns 401 if it is used from a browser, but do not rely on that.
+3. **Leave `SUPABASE_JWT_SECRET` blank.** New projects sign session tokens with
+   ES256 and the backend verifies them against the project's JWKS endpoint
+   automatically. Only fill it in if your project still issues HS256 tokens —
+   both paths are supported.
 4. Storage → new bucket named **`resumes`**, **not public**.
 5. Apply the schema:
    ```bash

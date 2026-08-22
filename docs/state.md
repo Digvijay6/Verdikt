@@ -23,20 +23,20 @@ Supabase project provisioned, schema rebuilt for multi-tenancy and applied.
 
 ## Built
 
-**Tenancy ⚪️**
+**Tenancy (shared)**
 - `shared/models/organization.py` — Organization, Membership, Plan, Role
 - `shared/plans.py` — tier limits with per-org override
 - `shared/tenancy.py` — membership resolution
 - `api/deps.py` — org resolved from membership per request, 7 tests
 
-**Lane 1 🔵 — backend**
+**Lane 1 — backend**
 - `intake/hard_checks.py` — deterministic gate, 16 tests
 - `intake/requirements.py` — Gemini extracts hard requirements from the JD
 - `intake/parsing.py` · `screening.py` · `invites.py` · `repo.py` · `pipeline.py`
 - `intake/question_builder.py` — the ADK workflow, 11 tests
 - `api/routers/intake.py` — 11 endpoints, all org-scoped
 
-**Lane 1 🔵 — frontend**
+**Lane 1 — frontend**
 - `ApplicationForm.tsx` (public, consent gate) · `JobsPage.tsx` (with pipeline
   tiles) · `ReviewQueue.tsx`. Typecheck clean, production build succeeds.
 
@@ -61,15 +61,15 @@ startup, so it looks fine until the first build silently fails.
 
 | Item | Lane |
 |---|---|
-| Org creation + first-membership flow — no way to sign up a company yet | 🔵 |
-| Recruiter login UI — the API checks JWTs, the frontend has no login page | 🔵 |
-| Concurrency and monthly limits are recorded but nothing enforces them | 🔵/🟡 |
-| Rate limiting on the public application endpoint | 🔵 |
-| Calibration set, 20–30 hand-scored answers (D5) | 🔵 |
+| Org creation + first-membership flow — no way to sign up a company yet | 1 |
+| Recruiter login UI — the API checks JWTs, the frontend has no login page | 1 |
+| Concurrency and monthly limits are recorded but nothing enforces them | 1 / 2 |
+| Rate limiting on the public application endpoint | 1 |
+| Calibration set, 20–30 hand-scored answers (D5) | 1 |
 | 6 of 9 prompts still stubs — `interviewer-system`, `score-*`, `recruiter-chat` | mixed |
-| `backend/voice/**` — agent entrypoint stubbed only | 🟡 |
-| Browser proctor detectors | 🟡 |
-| `recruiter_chat` ADK agent, leaderboard, outreach | 🟢 |
+| `backend/voice/**` — agent entrypoint stubbed only | 2 |
+| Browser proctor detectors | 2 |
+| `recruiter_chat` ADK agent, leaderboard, outreach | 3 |
 
 ## Blocking other lanes
 
@@ -79,9 +79,9 @@ Nothing, but **both lanes must read D25–D27 before writing queries.**
   a row whose org disagrees with its parent's.
 - `InterviewPackage` and `InterviewResult` both carry `org_id` now.
 - Resolve the org from `current_recruiter`, never from a path parameter.
-- **🟡 Lane 2** — `POST /interview/redeem` is stubbed; order of operations in
+- **Lane 2** — `POST /interview/redeem` is stubbed; order of operations in
   `docs/contracts.md`. The concurrency check belongs here.
-- **🟢 Lane 3** — leaderboard and detail endpoints stubbed.
+- **Lane 3** — leaderboard and detail endpoints stubbed.
 
 ## Known constraints
 

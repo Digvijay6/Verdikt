@@ -23,16 +23,16 @@ Three owners, disjoint folders. Work only in your lane.
 
 | Lane | Owner | Folders |
 |---|---|---|
-| 🔵 Intake | Aditya | `backend/intake/**` · `api/routers/intake.py` · `frontend/src/routes/intake` · `components/intake` |
-| 🟡 Interview | — | `backend/voice/**` · `api/routers/interview.py` · `frontend/src/routes/interview` · `lib/proctor` |
-| 🟢 Insights | — | `backend/insights/**` · `api/routers/insights.py` · `frontend/src/routes/recruiter` · `components/insights` |
+| Lane 1 — Intake | Aditya | `backend/intake/**` · `api/routers/intake.py` · `frontend/src/routes/intake` · `components/intake` |
+| Lane 2 — Interview | — | `backend/voice/**` · `api/routers/interview.py` · `frontend/src/routes/interview` · `lib/proctor` |
+| Lane 3 — Insights | — | `backend/insights/**` · `api/routers/insights.py` · `frontend/src/routes/recruiter` · `components/insights` |
 
 Tables follow the same rule — everyone reads, only the owner writes:
 
-- ⚪️ `organization` `membership` — tenancy, shared
-- 🔵 `job` `candidate` `application` `interview_invite`
-- 🟡 `interview` `question_instance` `integrity_event`
-- 🟢 `recruiter_chat_session` `outreach_message`
+- Shared  `organization` `membership`
+- Lane 1  `job` `candidate` `application` `interview_invite`
+- Lane 2  `interview` `question_instance` `integrity_event`
+- Lane 3  `recruiter_chat_session` `outreach_message`
 
 **Every tenant-scoped table carries `org_id`**, and children reference parents
 through composite foreign keys `(org_id, parent_id)` — so a cross-org row cannot

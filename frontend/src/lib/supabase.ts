@@ -1,5 +1,5 @@
 /**
- * Supabase browser client.  ⚠ SHARED
+ * Supabase browser client.  SHARED
  *
  * Anon key only — it is public by design. Every write goes through FastAPI,
  * which holds the service key. Do not reach for the service key here, and do

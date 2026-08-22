@@ -111,8 +111,8 @@ second agent framework anywhere in this repo.**
 **Chosen:** ADK in exactly two places.
 - **Before** — `question_builder`: JD → competencies → parallel question
   generation → BARS rubrics → poison question → validate → loop until it passes.
-  Uses ADK's Sequential/Parallel/Loop workflow agents. 🔵 Lane 1.
-- **After** — `recruiter_chat`: `LlmAgent` with tools and sessions. 🟢 Lane 3.
+  Uses ADK's Sequential/Parallel/Loop workflow agents. Lane 1.
+- **After** — `recruiter_chat`: `LlmAgent` with tools and sessions. Lane 3.
 
 **Explicitly rejected:** ADK anywhere in the scoring path, even though scoring
 happens "after the call".

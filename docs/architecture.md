@@ -9,12 +9,19 @@ Everything below happens inside one organization. Nothing is global.
 
 ```
   organization ──< membership >── auth.users
-       │
-       ├──< job ──< application ──< interview ──< question_instance
-       │             │      │                └──< integrity_event
-       │             │      └──< interview_invite
-       │             └──> candidate
-       └──< candidate
+       |
+       +--< candidate
+       |
+       +--< job
+             |
+             +--< application  (also references candidate)
+                     |
+                     +--< interview_invite
+                     |
+                     +--< interview
+                             |
+                             +--< question_instance
+                             +--< integrity_event
 ```
 
 Isolation is a database guarantee, not a coding convention (D25). Every
@@ -43,14 +50,14 @@ let one company infer that someone had also applied to another.
 ## The pipeline
 
 ```
-  Recruiter creates a job                                🔵 LANE 1
+  Recruiter creates a job                                LANE 1
      │  screening_profile: given by hand, or extracted
      │    from the JD by Gemini (jd-to-requirements)
      │  ADK question_builder:
      │    JD → competencies → questions (parallel) → BARS rubrics
      │    → poison question → validate → loop until it passes
      ▼
-  Application received                                   🔵 LANE 1
+  Application received                                   LANE 1
      │  resume PDF → Gemini native document input → ParsedResume
      │  hard checks (deterministic, no LLM)
      │    fail → rejected_screen: visible on the dashboard,
@@ -61,7 +68,7 @@ let one company infer that someone had also applied to another.
   Accepted → invite token minted, emailed as an expiring link
      │
      ▼
-  Candidate clicks → POST /interview/redeem                🟡 LANE 2
+  Candidate clicks → POST /interview/redeem                LANE 2
      │  validate invite → create Interview + LiveKit room
      │  → dispatch agent with InterviewPackage as room metadata
      │  → return short-lived LiveKit access token
@@ -76,7 +83,7 @@ let one company infer that someone had also applied to another.
      │  post-call two-pass scoring → InterviewResult
      │  post-call diarization over recorded tracks → IntegrityReport
      ▼
-  Leaderboard + candidate detail                          🟢 LANE 3
+  Leaderboard + candidate detail                          LANE 3
      │  ADK recruiter_chat: whole interview in context, tools for
      │  compare / draft / send
      ▼

@@ -1,5 +1,5 @@
 /**
- * Typed client for the FastAPI backend.  ⚠ SHARED — all three lanes import this.
+ * Typed client for the FastAPI backend.  SHARED — all three lanes import this.
  *
  * Types come from `npm run gen:types`, which reads FastAPI's /openapi.json and
  * regenerates src/types/api.ts. Run it after any Pydantic model change — that

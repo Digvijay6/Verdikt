@@ -25,16 +25,16 @@ Three people, one repo, disjoint folders.
 
 | Lane | Owner | Owns |
 |---|---|---|
-| 🔵 1 — Intake | Aditya | `api/routers/intake.py` · `frontend/src/routes/intake` · `components/intake` · everything up to and including the invite email |
-| 🟡 2 — Interview | | `backend/voice/**` · `api/routers/interview.py` · `frontend/src/routes/interview` · `lib/proctor` |
-| 🟢 3 — Insights | | `api/routers/insights.py` · `frontend/src/routes/recruiter` · `components/insights` |
+| 1 — Intake | Aditya | `api/routers/intake.py` · `frontend/src/routes/intake` · `components/intake` · everything up to and including the invite email |
+| 2 — Interview | | `backend/voice/**` · `api/routers/interview.py` · `frontend/src/routes/interview` · `lib/proctor` |
+| 3 — Insights | | `api/routers/insights.py` · `frontend/src/routes/recruiter` · `components/insights` |
 
 **Tables follow the same rule** — everyone reads, only the owner writes:
 
-- ⚪️ `organization` `membership` — tenancy, shared
-- 🔵 `job` `candidate` `application` `interview_invite`
-- 🟡 `interview` `question_instance` `integrity_event`
-- 🟢 `recruiter_chat_session` `outreach_message`
+- Shared  `organization` `membership`
+- Lane 1  `job` `candidate` `application` `interview_invite`
+- Lane 2  `interview` `question_instance` `integrity_event`
+- Lane 3  `recruiter_chat_session` `outreach_message`
 
 ### Tenancy — read this before writing a query
 

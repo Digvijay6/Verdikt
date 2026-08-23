@@ -16,6 +16,8 @@ import ReviewQueue from "./routes/intake/ReviewQueue";
 import Login from "./routes/auth/Login";
 import Onboarding from "./routes/auth/Onboarding";
 import Signup from "./routes/auth/Signup";
+import CandidateDetailPage from "./routes/recruiter/CandidateDetailPage";
+import LeaderboardPage from "./routes/recruiter/LeaderboardPage";
 import "./app.css";
 
 const queryClient = new QueryClient();
@@ -45,7 +47,6 @@ function RequireOrg({ children }: { children: React.ReactNode }) {
 const NAV: NavItem[] = [
   { to: "/jobs", label: "Jobs" },
   { to: "/leaderboard", label: "Leaderboard" },
-  { to: "/candidates", label: "Candidates" },
 ];
 
 function Header() {
@@ -120,21 +121,38 @@ export default function App() {
 
               {/* LANE 3 */}
               <Route
-                path="/leaderboard/*"
+                path="/leaderboard"
                 element={
                   <RequireOrg>
-                    <Placeholder name="Leaderboard" />
+                    <LeaderboardPage />
                   </RequireOrg>
                 }
               />
               <Route
-                path="/candidates/*"
+                path="/leaderboard/:jobId"
                 element={
                   <RequireOrg>
-                    <Placeholder name="Candidate detail" />
+                    <LeaderboardPage />
                   </RequireOrg>
                 }
               />
+              <Route
+                path="/leaderboard/:jobId/candidates/:interviewId"
+                element={
+                  <RequireOrg>
+                    <CandidateDetailPage />
+                  </RequireOrg>
+                }
+              />
+              <Route
+                path="/candidates/:interviewId"
+                element={
+                  <RequireOrg>
+                    <CandidateDetailPage />
+                  </RequireOrg>
+                }
+              />
+              <Route path="/candidates" element={<Navigate to="/leaderboard" replace />} />
               </Routes>
             </ErrorBoundary>
           </div>

@@ -6,7 +6,7 @@ work. Everything else in `docs/` is stable by design.
 If you are an agent reading this cold: check `docs/decisions.md` before
 proposing anything. It records what was rejected and why.
 
-Last updated: 2026-08-23
+Last updated: 2026-08-24
 
 ---
 
@@ -78,6 +78,12 @@ job created -> requirements extracted from the JD by Gemini
 ## Lane 3 — merged
 
 - `api/routers/insights.py` — org-scoped leaderboard and interview detail
+- Recruiter frontend is implemented: `/leaderboard/:jobId` provides job-scoped
+  ranking, search, review filtering, summary counts, percentile and all fixed
+  rubric dimensions. `/leaderboard/:jobId/candidates/:interviewId` provides the
+  scored candidate detail with holistic strengths/concerns, review triggers,
+  integrity evidence, per-question quotes/rationales, and model/prompt
+  provenance. Null dimensions are shown as not applicable, never as zero.
 - `shared/interview_scoring.py` — deterministic seniority weights, ownership
   cap, consistency penalties, must-have cap, review triggers
 - `interview_score` table plus rubric v2 aggregates (0-100 composite)

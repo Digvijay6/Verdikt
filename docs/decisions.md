@@ -490,7 +490,7 @@ their rubric/model/prompt provenance.
 v2 composite and never causes automatic rejection. This supersedes the earlier
 unimplemented note about a multiplicative integrity penalty.
 
-## D31 · Google for Jobs, not LinkedIn
+## D33 · Google for Jobs, not LinkedIn
 
 **Chosen:** publish `JobPosting` JSON-LD on a server-rendered public page at
 `/j/{job_id}`, discovered through `sitemap.xml`. Free, sanctioned, no gatekeeper.
@@ -548,6 +548,120 @@ liability plus a ban risk aimed at customers.
   learns from the UI rather than from traffic that never arrives.
 
 **Needs a public URL.** None of this does anything on localhost.
+
+---
+
+## D34 · Verify claims from links candidates give us; never source strangers
+
+**Chosen:** an ADK agent that checks a candidate's claims against the GitHub
+profile **they put on their own application**. Verification, not sourcing.
+
+**Rejected: crawling GitHub to find candidates.** GitHub's Acceptable Use
+Policy, section 7, closes the API loophole explicitly:
+
+> "You may not use information from the Service (whether scraped, **collected
+> through our API**, or obtained otherwise) for spamming purposes, including for
+> the purposes of sending unsolicited emails to users or selling personal
+> information, **such as to recruiters, headhunters, and job boards**."
+
+That is this product's exact use case. Using their API is the same violation as
+scraping — they wrote the clause to cover both.
+
+**Also rejected: fetching LinkedIn to verify employment.** Same wall as D31.
+Their User Agreement prohibits automated access, and the candidate consenting to
+*us* does not waive terms *they* agreed to.
+
+**GDPR, separately:** building profiles from crawled data is processing personal
+data. Article 14 requires notifying each person within a month, and it applies
+to public data. Links a candidate hands you on an application are a different
+basis entirely.
+
+## The four verdicts
+
+| Finding | Effect |
+|---|---|
+| `supported` — direct evidence for the claim | raises confidence |
+| `related` — adjacent work in the same domain | raises it modestly |
+| `contradicted` — evidence conflicts with the claim | lowers it |
+| **`not_found` — nothing either way** | **changes nothing** |
+
+`related` was added in prompt v3 because the other three lose real signal. A
+claim about private work can **never** be `supported` — the artifact is not
+public. But someone who has built a payment gateway of their own is a more
+plausible author of one at work than someone with no payments code at all.
+Collapsing that into `not_found` throws away corroboration.
+
+It is corroboration, never proof, and the `detail` must convey strength: "a
+200-line tutorial integration" and "300 commits over two years" are both
+`related` to a work claim, and a recruiter needs to see which. The prompt also
+guards against stretching it — a React todo app is not `related` to a claim
+about distributed systems.
+
+Absence of public evidence is not evidence of absence. Most professional work
+lives in private company repositories, so penalising an empty GitHub punishes
+people for where their best work happens to sit — usually behind an employer's
+firewall.
+
+The same logic is why LinkedIn verification would have been unfair even if it
+were permitted: penalising an unverifiable employment claim hits people with no
+LinkedIn, private profiles, stale profiles, or from regions where it is not
+dominant.
+
+`contradicted` is a deliberately high bar, and **prompt v2 narrowed it
+further after a name-collision problem was spotted**.
+
+A repository may only contradict a claim if **the candidate named that
+repository**. Otherwise what was found is a *different artifact*, and a
+different artifact cannot contradict anything.
+
+The failure this prevents: someone builds a real payments service at work
+(private, substantial) and also has a small personal `payment-gateway` repo
+they wrote while learning. The names collide, the agent judges the work claim by
+the hobby repo, and an honest candidate loses points for having practised. Given
+how generic project names are — `chat-app`, `dashboard`, `job-portal` — this is
+likely rather than hypothetical.
+
+So the rule is now:
+
+| Claim shape | Can it be contradicted? |
+|---|---|
+| Names a specific repo, and that repo is not what they described | yes |
+| Work at a company, similar-sounding personal repo found | **never** — private work is not on GitHub by definition |
+| A skill in general ("knows Kafka") | **never** — absence cannot disprove a skill |
+
+Enforced in both stages: the agent prompt and the formatter, so a stray
+`contradicted` cannot slip through the second pass either.
+
+**Failures map to `not_found` too.** A rate limit, a renamed account, an
+outage — the tools say so explicitly in their output, so the model cannot infer
+a negative from a technical problem.
+
+## Why this is the right ADK use
+
+`question_builder` (D9) is a fixed pipeline: the trajectory never varies, only
+the content does. Evidence gathering is genuinely agentic — each finding decides
+the next call. A repo whose name matches a claimed technology is worth opening;
+a two-commit fork is not. That is what tools and a model-driven trajectory are
+for.
+
+**Implementation notes**
+- Budget of 12 tool calls, enforced in the tools themselves via session state.
+  Hitting it is normal completion, not failure.
+- ADK cannot combine `output_schema` with tools, so the agent explores freely
+  and a second typed call structures its notes. Gemini's `response_schema`
+  guarantees the shape rather than hoping for well-formed JSON.
+- `httpx`, not `urllib`: urllib uses the OS trust store, which is absent on some
+  Python installs and fails every HTTPS call. That looked exactly like a
+  candidate having no GitHub profile.
+- Evidence is passed to the screen as **context to reason about**, never as a
+  score adjustment, so the recruiter sees the same findings and can trace a
+  decision to the repository behind it.
+- `GITHUB_TOKEN` is optional but wanted: unauthenticated is 60 requests/hour,
+  which one candidate can exhaust.
+
+**Proved itself on the first real run.** The screen had earlier rejected a
+candidate partly for "Python absent from the resume". The agent found a 106 KB
+FastAPI-and-PostgreSQL repository under a link that candidate had supplied.
 
 ---
 

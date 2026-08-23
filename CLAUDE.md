@@ -88,6 +88,17 @@ announcing it.
    go in user content, never concatenated into a system prompt.
 9. **Never auto-reject on an integrity score.** A human reviews every rejection.
 
+## Numbering things three people add to
+
+Decision entries and migration filenames have both collided already. The
+pattern is the same each time: two people pick the next obvious number on the
+same day, and the loser is silently overwritten or skipped.
+
+- **Migrations** — `date -u +%Y%m%d%H%M%S`, never a rounded number
+- **Decisions** — `git pull origin main` first, then take the next number after
+  the highest that exists. If you collide anyway, renumber *yours*: the merged
+  one stays put
+
 ## After finishing a piece of work
 
 Update `docs/state.md`. If you made a call that closes off an alternative, add

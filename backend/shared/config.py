@@ -19,6 +19,11 @@ class Settings(BaseSettings):
     # project still issues HS256 tokens. See api/deps.py.
     supabase_jwt_secret: str | None = None
 
+    # Optional. Unauthenticated GitHub is 60 requests/hour, which a single
+    # candidate's evidence run can exhaust; a token raises it to 5000 and
+    # costs nothing. Needs no scopes - it only reads public data.
+    github_token: str | None = None
+
     # Gemini
     gemini_api_key: str
 

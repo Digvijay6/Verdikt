@@ -56,14 +56,18 @@ job created -> requirements extracted from the JD by Gemini
 - Signup, login, company onboarding. Passwords never reach our server
 - `PUT /jobs/{id}` edit, `PUT /jobs/{id}/screening-profile`, `POST .../close`
 - Public posting at `/j/{id}` with Google `JobPosting` JSON-LD, plus
-  `sitemap.xml` and `robots.txt` (D31)
+  `sitemap.xml` and `robots.txt` (D33)
 - Public application form, consent recorded before the file is read
 - Gemini parses the PDF natively, anchored to today's date (D30)
 - Deterministic hard checks, deliberately permissive on ambiguity (D18)
 - LLM screen with required evidence quotes and provenance
 - Dashboard tiles, review queue, decisions recording `decided_by`
-- `intake/question_builder.py` — **the only ADK usage in the repo** (D9):
-  SequentialAgent -> ParallelAgent -> LlmAgent -> LoopAgent, 7 LLM sub-agents
+- `intake/question_builder.py` — ADK workflow (D9): SequentialAgent ->
+  ParallelAgent -> LlmAgent -> LoopAgent, 7 LLM sub-agents
+- `intake/evidence.py` — ADK agent checking a candidate's claims against the
+  GitHub link **they supplied** (D34). Verification, not sourcing: GitHub's AUP
+  forbids using API data for recruiting outreach. Genuinely agentic — each
+  finding decides the next call, unlike question_builder's fixed pipeline
 
 ## Lane 3 — merged
 
@@ -79,9 +83,11 @@ Voice state machine, scoring pipeline, proctor, agent worker, redeem endpoint,
 room metadata, silero VAD. Seven commits unmerged. They have added
 `livekit-plugins-silero` and `structlog` to the `[voice]` extra.
 
-## Two coordination failures worth learning from
+## Three coordination failures worth learning from
 
-Both were silent. Both cost real time.
+All silent. All cost real time. Same shape each: two people pick the next
+obvious number or edit the same shared file, and one side is overwritten
+without anything erroring.
 
 **Migration timestamp collision.** Two migrations shared `20260823090000`.
 Supabase keys applied migrations by that prefix, so recording one marked the
@@ -96,6 +102,12 @@ image had ADK from a cached Docker layer — a `--no-cache` rebuild or a fresh
 clone would have died on `import google.adk`.
 *Rule: `pyproject.toml` is a shared surface. And rebuild `--no-cache`
 occasionally, because a cached layer hides a broken dependency list for days.*
+
+**Decision numbers collided.** Lane 3 added D31 and D32; lane 1 independently
+added its own D31 and D32. Renumbered lane 1's to D33 and D34, since lane 3's
+were already merged.
+*Rule now in CLAUDE.md: pull main before numbering anything, and if you collide,
+renumber yours — the merged one stays put.*
 
 ## Not built
 
@@ -163,5 +175,12 @@ database cannot catch it.
 
 ## Recently decided
 
-D25-D31. Most consequential: **D25** (isolation enforced by the database),
-**D30** (the model gets today's date), **D31** (Google for Jobs, not LinkedIn).
+D25-D34. Most consequential: **D25** (isolation enforced by the database),
+**D30** (the model gets today's date), **D33** (Google for Jobs, not LinkedIn),
+**D34** (verify claims from supplied links; never source strangers).
+
+D34 carries the four-verdict model, which is the part worth reading before
+touching evidence: `supported` raises confidence, `related` raises it modestly,
+`contradicted` lowers it, and `not_found` is **neutral**. A repository may only
+contradict a claim if the candidate named that repository — otherwise it is a
+different artifact, and a personal repo can never contradict private work.

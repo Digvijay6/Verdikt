@@ -36,7 +36,7 @@ from livekit.agents import (
     cli,
 )
 from livekit.agents.llm import ChatContext, ChatMessage
-from livekit.plugins import noise_cancellation
+from livekit.plugins import silero
 
 from shared.db import db
 from shared.models.interview import (
@@ -165,7 +165,18 @@ async def entrypoint(ctx: JobContext) -> None:
     """Join the assigned room and conduct the interview."""
     await ctx.connect()
 
-    package = InterviewPackage.model_validate_json(ctx.job.metadata)
+    # LiveKit passes room metadata, not job metadata. The InterviewPackage
+    # is set as room metadata when the room is created (by /redeem or the
+    # test script). Job metadata is empty by default.
+    raw_metadata = ctx.job.metadata or ""
+    if not raw_metadata and ctx.room:
+        raw_metadata = ctx.room.metadata or ""
+
+    if not raw_metadata:
+        logger.error("no_interview_package", room=ctx.room.name if ctx.room else "?")
+        return
+
+    package = InterviewPackage.model_validate_json(raw_metadata)
     logger.info(
         "interview_started",
         interview_id=package.interview_id,
@@ -186,7 +197,7 @@ async def entrypoint(ctx: JobContext) -> None:
             model="gemini-2.5-flash-native-audio-preview-12-2025",
             voice="Aoede",
         ),
-        vad=noise_cancellation.BuiltinVAD(
+        vad=silero.VAD(
             min_speech_duration=0.5,
             min_silence_duration=1.5,
         ),
@@ -320,4 +331,11 @@ def _write_interview_result(
 
 
 if __name__ == "__main__":
+    import os
+
+    from dotenv import load_dotenv
+
+    load_dotenv()
+    # livekit-plugins-google reads GOOGLE_API_KEY, not GEMINI_API_KEY
+    os.environ.setdefault("GOOGLE_API_KEY", os.environ.get("GEMINI_API_KEY", ""))
     cli.run_app(WorkerOptions(entrypoint_fnc=entrypoint))

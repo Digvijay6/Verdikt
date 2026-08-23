@@ -12,9 +12,9 @@ from datetime import UTC, datetime
 from shared.models.interview import (
     IntegrityReport,
     InterviewPackage,
-    QuestionType,
     TranscriptTurn,
 )
+from shared.models.job import QuestionType
 from shared.models.scoring import (
     AnswerScore,
     InterviewResult,

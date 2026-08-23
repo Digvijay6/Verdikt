@@ -41,7 +41,7 @@ export function MagicNav({
   // visually, but that has historically dropped the nav landmark out of the
   // accessibility tree — not worth risking for a layout convenience.
   return (
-    <nav className="folder-strip" aria-label="Main">
+    <nav className="folder-strip folder-strip-dark" aria-label="Main">
       <span className="folder-strip-shape" aria-hidden />
       {children}
       {items.map((item) => {

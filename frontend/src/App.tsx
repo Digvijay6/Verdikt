@@ -1,7 +1,6 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
   BrowserRouter,
-  Link,
   Navigate,
   Route,
   Routes,
@@ -53,16 +52,9 @@ function Header() {
   if (!session) return null;
   return (
     <header className="app-nav">
-      {/* Brand and inactive tabs share one back sheet; the active tab rises out
-          of it and fuses with the page. */}
-      <MagicNav items={NAV}>
-        <Link
-          to="/jobs"
-          className="folder-label pr-3 pb-1 text-xl font-semibold tracking-tight no-underline"
-        >
-          Verdikt
-        </Link>
-      </MagicNav>
+      {/* Tabs start at the strip's left edge - no wordmark inside the folder,
+          so the active tab is the leftmost thing and reads as the front sheet. */}
+      <MagicNav items={NAV} />
 
       <div className="app-nav-aside">
         <span className="hint">{org?.name}</span>

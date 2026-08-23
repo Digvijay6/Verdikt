@@ -240,7 +240,7 @@
     align-items: flex-end;
     max-width: 72rem;
     margin: 1.4rem auto calc(-1 * var(--edge-w));
-    padding: 0 2.1rem;
+    padding: 0 1.25rem;
     position: relative;
     z-index: 1;
   }
@@ -284,33 +284,58 @@
 
   /* --- retro folder tabs ------------------------------------------------ */
 
-  /* The back sheet the inactive tabs live on: vertical down the left, slanted
-     away on the right, in the page background rather than the sheet white so
-     it reads as the layer behind. */
+  /* A real folder: inactive tabs printed on a back sheet, and the active one
+     pulled forward. Three things carry that reading and all three are needed -
+     the active tab is the page's own colour, it stands taller than the back
+     sheet, and no line divides it from the page below.
+
+     The back sheet is vertical down the left and slants away on the right, so
+     it stops where its tabs stop instead of running the width of the page. */
   .folder-strip {
-    --nav-rise: 0.55rem;
-    --slant: 0.85rem;
+    --nav-rise: 0.85rem;
+    /* How much shorter the back sheet is than the active tab. Small, but it is
+       what makes the active tab read as lifted rather than merely lighter. */
+    --sheet-drop: 0.32rem;
+    --slant: 0.9rem;
+    --strip-bg: var(--color-paper);
+    --strip-fg: var(--color-muted);
+
     position: relative;
     display: flex;
     align-items: flex-end;
-    padding: var(--nav-rise) 0 0 1.1rem;
+    /* Hug the tabs. Left as a block it stretches to the container and the
+       slanted end lands somewhere off to the right of nothing. */
+    width: fit-content;
+    max-width: 100%;
+    padding-top: var(--nav-rise);
+    margin-left: 1.25rem;
+    /* Room for the slant, which overhangs the strip's own box. */
+    margin-right: 1.6rem;
     margin-bottom: calc(-1 * var(--edge-w));
+  }
+
+  /* Top-level nav sits on a black sheet: it is app chrome rather than page
+     content, and the contrast is what makes the white tab read as pulled out
+     of it. */
+  .folder-strip-dark {
+    --strip-bg: var(--color-ink);
+    --strip-fg: rgb(255 255 255 / 0.72);
   }
 
   .folder-strip-shape {
     position: absolute;
     left: 0;
     right: 0;
-    top: 0;
+    top: var(--sheet-drop);
     bottom: calc(-1 * var(--edge-w));
-    background: var(--color-paper);
+    background: var(--strip-bg);
     border: var(--edge-w) solid var(--color-edge);
     border-bottom: none;
     border-right: none;
-    border-radius: 0.45rem 0 0 0;
+    border-radius: 0.5rem 0 0 0;
   }
   /* The slant. Skewed from the bottom so the base stays put and only the top
-     edge travels, which is what makes it lean rather than shear. */
+     edge travels, which makes it lean rather than shear. */
   .folder-strip-shape::after {
     content: "";
     position: absolute;
@@ -321,34 +346,39 @@
     background: inherit;
     border-top: var(--edge-w) solid var(--color-edge);
     border-right: var(--edge-w) solid var(--color-edge);
-    transform: skewX(20deg);
+    border-top-right-radius: 0.45rem;
+    transform: skewX(22deg);
     transform-origin: bottom;
   }
 
   .folder-tab {
     position: relative;
-    padding: 0.45rem 1.5rem 0.62rem;
+    padding: 0.5rem 1.5rem 0.6rem;
     font: inherit;
     font-weight: 600;
     font-size: 0.95rem;
-    color: var(--color-muted);
+    color: var(--strip-fg);
     background: none;
     border: none;
     text-decoration: none;
+    white-space: nowrap;
     cursor: pointer;
   }
   .folder-tab[aria-current="page"],
   .folder-tab[aria-selected="true"] {
     color: var(--color-ink);
   }
-  /* The label rides above the shape; the shape is painted behind it. */
-  .folder-tab > .folder-label {
+  /* The label rides above the shape, which is painted behind it. */
+  .folder-label {
     position: relative;
   }
 
-  /* The active tab. Three pieces: a straight middle plus two skewed ends, so
-     the slanted edges carry a real 1px border. clip-path cannot do this - it
-     cuts the border off with the shape. */
+  /* The active tab. Three pieces - a straight middle and two skewed ends - so
+     the slanted edges carry a real 1px border. clip-path was the obvious
+     approach and cannot do this: it cuts the border off with the shape.
+
+     `top` reaches the strip's very top while the back sheet starts --sheet-drop
+     lower, which is what makes this stand taller than its neighbours. */
   .folder-shape {
     position: absolute;
     left: var(--slant);
@@ -370,20 +400,22 @@
   }
   .folder-shape::before {
     right: 100%;
-    transform: skewX(-20deg);
+    transform: skewX(-22deg);
     transform-origin: bottom;
     border-left: var(--edge-w) solid var(--color-edge);
+    border-top-left-radius: 0.45rem;
   }
   .folder-shape::after {
     left: 100%;
-    transform: skewX(20deg);
+    transform: skewX(22deg);
     transform-origin: bottom;
     border-right: var(--edge-w) solid var(--color-edge);
+    border-top-right-radius: 0.45rem;
   }
 
   .nb-tabpanel {
     border: var(--edge-w) solid var(--color-edge);
-    border-radius: 0 var(--radius-card) var(--radius-card) var(--radius-card);
+    border-radius: var(--radius-card);
     background: var(--color-panel);
     box-shadow: var(--shadow-card);
     padding: 1.35rem;

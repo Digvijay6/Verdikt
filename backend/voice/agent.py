@@ -197,7 +197,7 @@ async def entrypoint(ctx: JobContext) -> None:
             model="gemini-2.5-flash-native-audio-preview-12-2025",
             voice="Aoede",
         ),
-        vad=silero.VAD(
+        vad=silero.VAD.load(
             min_speech_duration=0.5,
             min_silence_duration=1.5,
         ),

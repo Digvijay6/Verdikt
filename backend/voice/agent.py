@@ -76,7 +76,7 @@ class InterviewerAgent(Agent):
             f"{question_guide}"
         )
 
-        super().__init__(instructions=full_prompt)
+        super().__init__(instructions=full_prompt, id="verdikt")
         self._package = package
         self._sm = state_machine
         self._session: AgentSession | None = None
@@ -120,7 +120,7 @@ class InterviewerAgent(Agent):
     async def on_user_turn_completed(
         self, turn_ctx: ChatContext, new_message: ChatMessage
     ) -> None:
-        """Candidate finished speaking — capture answer, score, advance."""
+        """Candidate finished speaking — capture answer, send transcript, advance."""
         transcript = new_message.text_content or ""
         if not transcript.strip():
             return
@@ -137,13 +137,17 @@ class InterviewerAgent(Agent):
 
         # Record transcript turn
         q = self._sm.current_question()
-        self._transcript.append(TranscriptTurn(
+        turn = TranscriptTurn(
             speaker="candidate",
             text=transcript,
             start_ms=self._turn_start_ms,
             end_ms=now_ms,
             question_id=q.id if q else None,
-        ))
+        )
+        self._transcript.append(turn)
+
+        # Send transcript to frontend via LiveKit data channel
+        await self._publish_transcript(turn)
 
         # Fire live scoring off-thread
         if q:
@@ -172,6 +176,39 @@ class InterviewerAgent(Agent):
                         "recruiter will follow up, and end the interview."
                     )
                 )
+
+    async def _publish_transcript(self, turn: TranscriptTurn) -> None:
+        """Send a transcript turn to the frontend via LiveKit data channel."""
+        if not self._session or not hasattr(self._session, "room"):
+            return
+        try:
+            room = self._session.room
+            if room and room.local_participant:
+                import json
+                data = json.dumps({
+                    "type": "transcript",
+                    "speaker": turn.speaker,
+                    "text": turn.text,
+                    "question_id": turn.question_id,
+                }).encode()
+                await room.local_participant.publish_data(data, reliable=True)
+        except Exception:
+            logger.exception("publish_transcript_failed")
+
+    async def on_agent_speech_committed(self, message: ChatMessage) -> None:
+        """Agent finished speaking — record and send transcript to frontend."""
+        text = message.text_content or ""
+        if not text.strip():
+            return
+        now_ms = int(time.time() * 1000)
+        turn = TranscriptTurn(
+            speaker="agent",
+            text=text,
+            start_ms=self._last_agent_end_ms,
+            end_ms=now_ms,
+        )
+        self._transcript.append(turn)
+        await self._publish_transcript(turn)
 
     async def _fire_live_score(self, transcript: str, question) -> None:
         """Score the answer for correctness in real time (off-thread)."""
@@ -328,15 +365,17 @@ async def entrypoint(ctx: JobContext) -> None:
     await session.start(agent=agent, room=ctx.room)
     agent.set_session(session)
 
-    # Greet and ask the first question
-    first_q = sm.current_question()
-    if first_q:
-        await session.generate_reply(
-            instructions=(
-                f"Greet the candidate briefly and ask this question: "
-                f"{first_q.prompt}"
-            )
+    # Greet, introduce as Verdikt, ask for intro — the system prompt handles
+    # the flow: greet → intro → small talk → transition to questions.
+    # The state machine's first question is asked by the LLM naturally after
+    # the small talk, driven by the question guide in the system prompt.
+    await session.generate_reply(
+        instructions=(
+            "Greet the candidate, introduce yourself as Verdikt, and ask "
+            "them to introduce themselves. Do not ask any interview "
+            "questions yet — just the intro and small talk."
         )
+    )
     agent._last_agent_end_ms = int(time.time() * 1000)
 
     # On room disconnect — run the post-call pipeline.

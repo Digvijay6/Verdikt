@@ -1,33 +1,38 @@
 /**
  * Interview complete — shown when the interview ends.
- * The candidate sees a simple thank-you; no feedback on performance.
+ * Matches the neobrutalist theme.
  */
 
 export function InterviewComplete() {
   return (
-    <div className="flex items-center justify-center min-h-screen bg-gray-50">
-      <div className="max-w-md text-center">
-        <div className="w-16 h-16 mx-auto mb-6 rounded-full bg-green-100 flex items-center justify-center">
-          <svg
-            className="w-8 h-8 text-green-600"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-            strokeWidth={2}
-          >
-            <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-          </svg>
+    <main className="wrap narrow">
+      <div className="nb-card" style={{ textAlign: "center" }}>
+        <div
+          style={{
+            width: "3rem",
+            height: "3rem",
+            margin: "0 auto 1.5rem",
+            borderRadius: "9999px",
+            background: "color-mix(in srgb, var(--color-lime) 30%, var(--color-panel))",
+            border: "var(--edge-w) solid var(--color-edge)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            fontSize: "1.5rem",
+          }}
+        >
+          ✓
         </div>
-        <h1 className="text-xl font-semibold text-gray-900 mb-2">
+        <h1 style={{ fontSize: "1.2rem", marginBottom: "0.5rem" }}>
           Interview complete
         </h1>
-        <p className="text-sm text-gray-600 mb-6">
+        <p style={{ color: "var(--color-muted)", fontSize: "0.9rem", marginBottom: "1rem" }}>
           Thank you for your time. Your recruiter will follow up with next steps.
         </p>
-        <p className="text-xs text-gray-400">
+        <p style={{ fontSize: "0.8rem", color: "var(--color-muted)" }}>
           You can close this window.
         </p>
       </div>
-    </div>
+    </main>
   );
 }

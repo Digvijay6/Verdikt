@@ -1,5 +1,6 @@
 /**
  * Live transcript — shows agent and candidate turns as they happen.
+ * Matches the neobrutalist theme.
  */
 
 interface TranscriptEntry {
@@ -15,30 +16,35 @@ interface LiveTranscriptProps {
 export function LiveTranscript({ transcript }: LiveTranscriptProps) {
   if (transcript.length === 0) {
     return (
-      <div className="flex items-center justify-center h-full text-gray-400 text-sm">
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100%", minHeight: "50vh", color: "var(--color-muted)", fontSize: "0.85rem" }}>
         The interview will begin shortly...
       </div>
     );
   }
 
   return (
-    <div className="space-y-4">
+    <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
       {transcript.map((entry, i) => (
         <div
           key={i}
-          className={`flex ${entry.speaker === "agent" ? "justify-start" : "justify-end"}`}
+          style={{
+            display: "flex",
+            justifyContent: entry.speaker === "agent" ? "flex-start" : "flex-end",
+          }}
         >
           <div
-            className={`max-w-[80%] rounded-2xl px-4 py-3 ${
-              entry.speaker === "agent"
-                ? "bg-gray-100 text-gray-900"
-                : "bg-blue-50 text-gray-900"
-            }`}
+            className="nb-row"
+            style={{
+              maxWidth: "80%",
+              background: entry.speaker === "agent" ? "var(--color-panel)" : "color-mix(in srgb, var(--color-lime) 12%, var(--color-panel))",
+            }}
           >
-            <div className="text-xs text-gray-400 mb-1">
-              {entry.speaker === "agent" ? "Interviewer" : "You"}
+            <div style={{ fontSize: "0.75rem", color: "var(--color-muted)", marginBottom: "0.25rem" }}>
+              {entry.speaker === "agent" ? "Verdikt" : "You"}
             </div>
-            <p className="text-sm leading-relaxed">{entry.text}</p>
+            <p style={{ fontSize: "0.9rem", lineHeight: 1.5, margin: 0 }}>
+              {entry.text}
+            </p>
           </div>
         </div>
       ))}

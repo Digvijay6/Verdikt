@@ -58,7 +58,7 @@ export default function Onboarding() {
         company and is visible only to people you invite.
       </p>
 
-      <form onSubmit={onSubmit} className="card">
+      <form onSubmit={onSubmit} className="nb-card">
         <label>
           Company name
           <input
@@ -93,7 +93,7 @@ export default function Onboarding() {
           </p>
         )}
 
-        <button type="submit" disabled={busy || !name.trim() || !slug}>
+        <button className="nb-btn nb-btn-primary" type="submit" disabled={busy || !name.trim() || !slug}>
           {busy ? "Creating..." : "Create company"}
         </button>
       </form>

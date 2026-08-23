@@ -26,7 +26,7 @@ them, and `Workflow` cannot yet be an LlmAgent sub-agent — so it is still
 settling. Migration is a contained change because it lives entirely behind
 `build_workflow()`. Revisit before launch, not before the hackathon.
 
-The rubric is built once per job and never varies between candidates (D35). The
+The rubric is built once per job and never varies between candidates (D40). The
 questions do vary — the invariant a leaderboard needs is the scoring frame, not
 the wording of what was asked.
 

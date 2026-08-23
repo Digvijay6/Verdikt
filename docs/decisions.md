@@ -179,7 +179,7 @@ Not forgotten, not in scope for the hackathon:
 - Tier 2 extension and Tier 3 native proctoring client.
 - Outcome loop — tying scores to 30/60/90-day performance.
 
-## D16 · Question bank is generated once per job — SUPERSEDED by D35
+## D16 · Question bank is generated once per job — SUPERSEDED by D40
 
 **Superseded 2026-08-23.** The reasoning below is sound about *what* has to stay
 constant and wrong about *which part of the interview that is*. Kept because the
@@ -581,7 +581,7 @@ partial leaderboard result; rerunning by job id is idempotent.
 **Compatibility:** D37 supersedes D36. This is a new registry task and prompt
 version, so its scores must be calibrated separately from `score-answer.v2`.
 
-## D31 · Google for Jobs, not LinkedIn
+## D38 · Google for Jobs, not LinkedIn
 
 **Chosen:** publish `JobPosting` JSON-LD on a server-rendered public page at
 `/j/{job_id}`, discovered through `sitemap.xml`. Free, sanctioned, no gatekeeper.
@@ -642,7 +642,7 @@ liability plus a ban risk aimed at customers.
 
 ---
 
-## D34 · Verify claims from links candidates give us; never source strangers
+## D39 · Verify claims from links candidates give us; never source strangers
 
 **Chosen:** an ADK agent that checks a candidate's claims against the GitHub
 profile **they put on their own application**. Verification, not sourcing.
@@ -754,7 +754,7 @@ for.
 candidate partly for "Python absent from the resume". The agent found a 106 KB
 FastAPI-and-PostgreSQL repository under a link that candidate had supplied.
 
-## D35 · Fixed rubric per job, questions generated per candidate
+## D40 · Fixed rubric per job, questions generated per candidate
 
 **Supersedes D16.**
 

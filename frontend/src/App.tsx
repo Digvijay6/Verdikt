@@ -1,13 +1,14 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
   BrowserRouter,
-  Link,
   Navigate,
   Route,
   Routes,
   useLocation,
 } from "react-router-dom";
 
+import { ErrorBoundary } from "./components/intake/ErrorBoundary";
+import { MagicNav, type NavItem } from "./components/intake/MagicNav";
 import { AuthProvider, useAuth } from "./lib/auth";
 import ApplicationForm from "./routes/intake/ApplicationForm";
 import JobsPage from "./routes/intake/JobsPage";
@@ -31,7 +32,7 @@ function RequireOrg({ children }: { children: React.ReactNode }) {
 
   // Redirecting before the session has loaded bounces people who are already
   // signed in straight back to the login page on every refresh.
-  if (loading) return <main className="wrap">Loading...</main>;
+  if (loading) return <Loading />;
   if (!session)
     return <Navigate to="/login" replace state={{ from: location.pathname }} />;
   if (!org) return <Navigate to="/onboarding" replace />;
@@ -39,16 +40,29 @@ function RequireOrg({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
+/** Nav is lane-aware: it lists every lane's surface, so the product reads as
+ *  one thing even while lanes 2 and 3 are still filling theirs in. */
+const NAV: NavItem[] = [
+  { to: "/jobs", label: "Jobs" },
+  { to: "/leaderboard", label: "Leaderboard" },
+  { to: "/candidates", label: "Candidates" },
+];
+
 function Header() {
   const { session, org, signOut } = useAuth();
   if (!session) return null;
   return (
-    <header className="topbar">
-      <Link to="/jobs" className="brand">
-        Verdikt
-      </Link>
-      <span className="hint">{org?.name}</span>
-      <button onClick={() => void signOut()}>Sign out</button>
+    <header className="app-nav">
+      {/* Tabs start at the strip's left edge - no wordmark inside the folder,
+          so the active tab is the leftmost thing and reads as the front sheet. */}
+      <MagicNav items={NAV} />
+
+      <div className="app-nav-aside">
+        <span className="hint">{org?.name}</span>
+        <button className="nb-btn" onClick={() => void signOut()}>
+          Sign out
+        </button>
+      </div>
     </header>
   );
 }
@@ -70,56 +84,74 @@ export default function App() {
       <AuthProvider>
         <BrowserRouter>
           <Header />
-          <Routes>
-            <Route path="/" element={<Navigate to="/jobs" replace />} />
+          <div className="app-page">
+            <ErrorBoundary>
+              <Routes>
+              <Route path="/" element={<Navigate to="/jobs" replace />} />
 
-            <Route path="/login" element={<Login />} />
-            <Route path="/signup" element={<Signup />} />
-            <Route path="/onboarding" element={<Onboarding />} />
+              <Route path="/login" element={<Login />} />
+              <Route path="/signup" element={<Signup />} />
+              <Route path="/onboarding" element={<Onboarding />} />
 
-            {/* LANE 1 */}
-            <Route
-              path="/jobs"
-              element={
-                <RequireOrg>
-                  <JobsPage />
-                </RequireOrg>
-              }
-            />
-            <Route
-              path="/applications/:jobId"
-              element={
-                <RequireOrg>
-                  <ReviewQueue />
-                </RequireOrg>
-              }
-            />
+              {/* LANE 1 */}
+              <Route
+                path="/jobs"
+                element={
+                  <RequireOrg>
+                    <JobsPage />
+                  </RequireOrg>
+                }
+              />
+              <Route
+                path="/applications/:jobId"
+                element={
+                  <RequireOrg>
+                    <ReviewQueue />
+                  </RequireOrg>
+                }
+              />
 
-            {/* Public - no account, ever */}
-            <Route path="/apply/:jobId" element={<ApplicationForm />} />
-            <Route path="/interview/:token" element={<Placeholder name="Interview" />} />
+              {/* Public - no account, ever */}
+              <Route path="/apply/:jobId" element={<ApplicationForm />} />
+              <Route
+                path="/interview/:token"
+                element={<Placeholder name="Interview" />}
+              />
 
-            {/* LANE 3 */}
-            <Route
-              path="/leaderboard/*"
-              element={
-                <RequireOrg>
-                  <Placeholder name="Leaderboard" />
-                </RequireOrg>
-              }
-            />
-            <Route
-              path="/candidates/*"
-              element={
-                <RequireOrg>
-                  <Placeholder name="Candidate detail" />
-                </RequireOrg>
-              }
-            />
-          </Routes>
+              {/* LANE 3 */}
+              <Route
+                path="/leaderboard/*"
+                element={
+                  <RequireOrg>
+                    <Placeholder name="Leaderboard" />
+                  </RequireOrg>
+                }
+              />
+              <Route
+                path="/candidates/*"
+                element={
+                  <RequireOrg>
+                    <Placeholder name="Candidate detail" />
+                  </RequireOrg>
+                }
+              />
+              </Routes>
+            </ErrorBoundary>
+          </div>
         </BrowserRouter>
       </AuthProvider>
     </QueryClientProvider>
+  );
+}
+
+/** Shown while the session resolves. Says what it is waiting on: a bare
+ *  "Loading..." that never clears is indistinguishable from a hung page, and
+ *  that ambiguity cost real debugging time. */
+function Loading() {
+  return (
+    <main className="wrap">
+      <p className="hint m-0">Checking your session...</p>
+    </main>
   );
 }
 

@@ -156,7 +156,7 @@ it. This document is the aggregation that turns any set of anchored measurements
 into one comparable number. A job's rubric changing bumps `rubric_version`; this
 document changing bumps the scoring version and requires recalibration.
 
-Since D35 the questions differ between candidates while the anchors do not.
+Since D40 the questions differ between candidates while the anchors do not.
 Nothing here changes as a result — anchored measurement and deterministic
 aggregation both operate on `Question.dimensions`, which still arrive in the
 shape they always did. But calibration step 3 now has one more trigger worth

@@ -54,14 +54,14 @@ export default function Signup() {
     <main className="wrap narrow">
       <h1>Create an account</h1>
 
-      <form onSubmit={onSubmit} className="card">
+      <form onSubmit={onSubmit} className="nb-card">
         <label>
           Work email
-          <input name="email" type="email" required autoComplete="email" autoFocus />
+          <input className="nb-input" name="email" type="email" required autoComplete="email" autoFocus />
         </label>
         <label>
           Password <span className="hint">at least 8 characters</span>
-          <input
+          <input className="nb-input"
             name="password"
             type="password"
             required
@@ -76,7 +76,7 @@ export default function Signup() {
           </p>
         )}
 
-        <button type="submit" disabled={busy}>
+        <button className="nb-btn nb-btn-primary" type="submit" disabled={busy}>
           {busy ? "Creating..." : "Create account"}
         </button>
       </form>

@@ -379,6 +379,13 @@
     clip-path: polygon(0 0, calc(100% - var(--strip-end)) 0, 100% 100%, 0 100%);
   }
 
+  /* Nested inactive tabs sit behind the active tab, so their lower edge must
+     continue the panel's top border. The active shape paints over this line
+     only across its own width, leaving one connected hairline after it. */
+  .folder-strip:not(.folder-strip-dark) .folder-strip-shape::after {
+    bottom: var(--edge-w);
+  }
+
   .folder-tab {
     position: relative;
     padding: 0.5rem 1.35rem 0.6rem;

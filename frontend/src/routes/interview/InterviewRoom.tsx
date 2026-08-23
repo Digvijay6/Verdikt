@@ -14,8 +14,8 @@
 
 import { useState, useEffect, useRef } from "react";
 import { useParams } from "react-router-dom";
-import { useLiveKitRoom, useTracks } from "@livekit/components-react";
-import { RoomEvent, Track } from "livekit-client";
+import { useLiveKitRoom } from "@livekit/components-react";
+import { RoomEvent } from "livekit-client";
 
 import { api } from "../../lib/api";
 import { ProctorClient } from "../../lib/proctor";

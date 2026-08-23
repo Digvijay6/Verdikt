@@ -6,7 +6,7 @@ import JobsPage from "./routes/intake/JobsPage";
 import ReviewQueue from "./routes/intake/ReviewQueue";
 import "./app.css";
 
-import { InterviewRoom } from "./routes/interview/InterviewRoom";
+import InterviewRoom from "./routes/interview/InterviewRoom";
 
 const queryClient = new QueryClient();
 

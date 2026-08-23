@@ -124,9 +124,9 @@ never causes automatic rejection.
 
 - During the call, `score-answer-live` provides a provisional correctness-only
   signal for adaptive follow-ups.
-- After the call, `score-answer.v2` produces per-answer measurements and
-  evidence. The deterministic aggregator creates the final composite and review
-  reasons. The post-call result replaces the live signal.
+- After the call, one `score-interview.v1` request produces measurements and
+  evidence for every answer. The deterministic aggregator creates the final
+  composite and review reasons. The post-call result replaces the live signal.
 - `score-holistic` may produce narrative strengths and concerns for recruiter
   explanation, but it does not alter the v2 composite.
 

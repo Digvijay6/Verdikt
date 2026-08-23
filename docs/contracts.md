@@ -77,6 +77,29 @@ Lane 2 then serializes the completed contract with
 upserting `interview_score`. This keeps indexed summary columns and the full
 `result` JSON identical.
 
+Each `question_instance` stores the scalar scoring context directly:
+`question_text`, `question_type`, `competency`, `seniority`, and the three claim
+flags. Its ordered resume/prior-answer claims live in `question_scoring_claim`;
+its ordered answer and follow-up turns live in `question_conversation_turn`.
+Lane 2 assembles those rows into Gemini user content without persisting a new
+`scoring_input` JSON object.
+
+The validated `fixed_rubric` returned by `score-answer.v2` is an in-memory
+Pydantic response contract. Lane 2 flattens it into the one-to-one
+`question_rubric_assessment` table: each applicable score, evidence quote,
+rationale, label, model id, and prompt version has a typed column. No new
+`question_instance.fixed_rubric` JSONB is written. Indexed interview aggregates
+remain in `interview_score`.
+
+After transcript segmentation, Lane 2 wraps all validated `ScoreAnswerInput`
+packages in one `ScoreInterviewInput` and calls
+`shared.post_call_scoring.score_interview()`. Exactly one `score-interview` call
+returns every per-question assessment plus holistic explanation. Application
+code verifies the complete question-id set, restores question-bank order,
+attaches registry provenance, and copies factual context flags from trusted
+input. Persist assessments only after the response validates; then run
+deterministic aggregation.
+
 `InterviewResult.overall` remains a derived 1-5 compatibility field. Lane 3
 ranks new results by `composite_score`; it falls back to `overall` only for v1
 rows that have not been re-scored.

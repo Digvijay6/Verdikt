@@ -7,10 +7,12 @@ lane 3 handoff and is what the leaderboard ranks on.
 
 from datetime import datetime
 from enum import StrEnum
+from typing import Literal
 
 from pydantic import BaseModel, Field, model_validator
 
 from .interview import IntegrityReport
+from .job import RubricDimension
 
 
 class DimensionScore(BaseModel):
@@ -102,14 +104,19 @@ class FixedRubricAssessment(BaseModel):
         return self
 
 
-class AnswerScore(BaseModel):
-    """Pass 1 — per question, parallelisable."""
+class ScoreAnswerResponse(BaseModel):
+    """Validated Gemini output before trusted provenance is attached."""
 
     question_id: str
     dimensions: list[DimensionScore]
     weighted_score: float = Field(ge=1.0, le=5.0)
+    fixed_rubric: FixedRubricAssessment
+
+
+class AnswerScore(ScoreAnswerResponse):
+    """Persisted per-question score with trusted context and provenance."""
+
     followed_up: bool = False
-    fixed_rubric: FixedRubricAssessment | None = None
     model_id: str
     prompt_version: str
 
@@ -146,6 +153,58 @@ class SeniorityBucket(StrEnum):
     JUNIOR = "junior"
     MID = "mid"
     SENIOR = "senior"
+
+
+class ScoringResumeContext(BaseModel):
+    relevant_claims: list[str] = Field(default_factory=list)
+    is_resume_headline_claim: bool = False
+    is_flagship_project: bool = False
+    central_to_role: bool = False
+
+
+class ScoringConversationTurn(BaseModel):
+    speaker: Literal["candidate", "interviewer", "agent"]
+    text: str = Field(min_length=1)
+    start_ms: int = Field(ge=0)
+    end_ms: int = Field(ge=0)
+    is_follow_up: bool = False
+
+    @model_validator(mode="after")
+    def end_must_follow_start(self) -> "ScoringConversationTurn":
+        if self.end_ms < self.start_ms:
+            raise ValueError("end_ms must be greater than or equal to start_ms")
+        return self
+
+
+class ScoreAnswerInput(BaseModel):
+    """Post-call user content assembled for one deterministic score-answer call."""
+
+    question_id: str = Field(min_length=1)
+    question: str = Field(min_length=1)
+    question_type: ScoringQuestionType
+    competency: str = Field(min_length=1)
+    seniority: SeniorityBucket
+    dimensions: list[RubricDimension] = Field(default_factory=list)
+    resume_context: ScoringResumeContext
+    conversation: list[ScoringConversationTurn] = Field(min_length=1)
+    prior_relevant_claims: list[str] = Field(default_factory=list)
+
+
+class ScoreInterviewInput(BaseModel):
+    """One post-call Gemini request containing every scored question."""
+
+    interview_id: str = Field(min_length=1)
+    questions: list[ScoreAnswerInput] = Field(min_length=1)
+
+
+class ScoreInterviewResponse(BaseModel):
+    """Validated one-prompt response before trusted provenance is attached."""
+
+    answers: list[ScoreAnswerResponse] = Field(min_length=1)
+    holistic_score: float = Field(ge=1.0, le=5.0)
+    strengths: list[str] = Field(default_factory=list, max_length=3)
+    concerns: list[str] = Field(default_factory=list, max_length=3)
+    representative_quote: str = Field(min_length=1)
 
 
 class ReviewReason(StrEnum):

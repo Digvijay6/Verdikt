@@ -59,6 +59,11 @@
       "model": "gemini-3.1-pro-preview",
       "version": "v2"
     },
+    "score-interview": {
+      "prompt": "score-interview.v1.md",
+      "model": "gemini-3.1-pro-preview",
+      "version": "v1"
+    },
     "score-holistic": {
       "prompt": "score-holistic.v1.md",
       "model": "gemini-3.1-pro-preview",

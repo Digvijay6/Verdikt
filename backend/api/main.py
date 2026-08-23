@@ -7,7 +7,7 @@ OpenAPI: http://localhost:8000/openapi.json  <- frontend types generate from thi
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-
+from fastapi.middleware.cors import CORSMiddleware
 from shared.config import get_settings
 
 from .routers import auth, insights, intake, interview, public

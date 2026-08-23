@@ -57,7 +57,7 @@ job created -> requirements extracted from the JD by Gemini
 - Signup, login, company onboarding. Passwords never reach our server
 - `PUT /jobs/{id}` edit, `PUT /jobs/{id}/screening-profile`, `POST .../close`
 - Public posting at `/j/{id}` with Google `JobPosting` JSON-LD, plus
-  `sitemap.xml` and `robots.txt` (D33)
+  `sitemap.xml` and `robots.txt` (D38)
 - Public application form, consent recorded before the file is read
 - Gemini parses the PDF natively, anchored to today's date (D30)
 - Deterministic hard checks, deliberately permissive on ambiguity (D18)
@@ -65,13 +65,13 @@ job created -> requirements extracted from the JD by Gemini
 - Dashboard tiles, review queue, decisions recording `decided_by`
 - `intake/question_builder.py` — ADK workflow (D9): SequentialAgent ->
   LlmAgent -> LoopAgent, 4 LLM sub-agents. Produces `job.rubric`: competencies,
-  BARS anchors, weights. **Not questions** (D35)
+  BARS anchors, weights. **Not questions** (D40)
 - `intake/questions.py` — one `llm.run()` writing this candidate's probes from
   the rubric plus their resume. Dimensions are attached by rubric lookup, never
   copied by the model — that is what keeps two candidates comparable
 - `intake/packaging.py` — `build_interview_package()`, the lane 2 handoff
 - `intake/evidence.py` — ADK agent checking a candidate's claims against the
-  GitHub link **they supplied** (D34). Verification, not sourcing: GitHub's AUP
+  GitHub link **they supplied** (D39). Verification, not sourcing: GitHub's AUP
   forbids using API data for recruiting outreach. Genuinely agentic — each
   finding decides the next call, unlike question_builder's fixed pipeline
 
@@ -109,11 +109,11 @@ itself — fetching the application, validating `job.question_bank` into
 `Question` objects, formatting a resume summary. All lane 1 models. Replace that
 block (`api/routers/interview.py` on `ai-call`, ~lines 175-222) with
 `build_interview_package(application_id, org_id, interview_id)`, about -32 lines
-and +1. Until they do, jobs built after D35 hand them a null `question_bank` and
+and +1. Until they do, jobs built after D40 hand them a null `question_bank` and
 redeem fails loudly, which is the intended failure: better than silently parsing
 a rubric into nonsense.
 
-Two things that change on its own merits, not just for D35:
+Two things that change on its own merits, not just for D40:
 
 - Their inline summary opens with `resume_highlights.full_name`, which **D14
   forbids** — the interviewer agent is meant to be blind to name and
@@ -142,8 +142,11 @@ clone would have died on `import google.adk`.
 *Rule: `pyproject.toml` is a shared surface. And rebuild `--no-cache`
 occasionally, because a cached layer hides a broken dependency list for days.*
 
-**Decision numbers collided.** Lane 3 added D31 and D32; lane 1 independently
-added its own D31 and D32. Renumbered lane 1's to D33 and D34, since lane 3's
+**Decision numbers collided, twice.** Lane 3 added D31 and D32; lane 1 had
+independently added its own D31 and D32, so lane 1 renumbered. Then lane 3's
+second merge landed D31-D37 and collided again with the same lane 1 entries,
+this time also rewriting one of their headings so `state.md` cited a D33 that
+had become someone else's decision. Lane 1 renumbered again, to D38-D40, since
 were already merged.
 *Rule now in CLAUDE.md: pull main before numbering anything, and if you collide,
 renumber yours — the merged one stays put.*
@@ -190,7 +193,7 @@ database cannot catch it.
   jobs before a demo, not during one
 - **Per-candidate question generation adds ~20s at invite**, one call. It runs
   in the background after the recruiter's request returns, and a failure is
-  recorded rather than blocking the invite (D35)
+  recorded rather than blocking the invite (D40)
 - **Resend sandbox** delivers only to the account owner until a domain is
   verified
 
@@ -217,18 +220,18 @@ database cannot catch it.
 
 ## Recently decided
 
-D25-D35. Most consequential: **D25** (isolation enforced by the database),
-**D30** (the model gets today's date), **D33** (Google for Jobs, not LinkedIn),
-**D34** (verify claims from supplied links; never source strangers), **D35**
+D25-D40. Most consequential: **D25** (isolation enforced by the database),
+**D30** (the model gets today's date), **D38** (Google for Jobs, not LinkedIn),
+**D39** (verify claims from supplied links; never source strangers), **D40**
 (fixed rubric per job, questions per candidate — supersedes D16).
 
-D35 is the one to read before touching anything scoring-adjacent. The rule it
+D40 is the one to read before touching anything scoring-adjacent. The rule it
 turns on: **the invariant a leaderboard needs is the scoring frame, not the
 question wording.** Anchors must be portable — scorable without knowing which
 probe produced the answer — so no anchor may name a technology. Verified on a
 live build: 105 anchors, zero technology mentions.
 
-D34 carries the four-verdict model, which is the part worth reading before
+D39 carries the four-verdict model, which is the part worth reading before
 touching evidence: `supported` raises confidence, `related` raises it modestly,
 `contradicted` lowers it, and `not_found` is **neutral**. A repository may only
 contradict a claim if the candidate named that repository — otherwise it is a

@@ -85,7 +85,7 @@ def create_job(
     migrations are additive only, so it kept the name.)
 
     The rubric is the *scoring frame* — competencies and anchors. The questions
-    themselves are written per candidate at invite time (D35).
+    themselves are written per candidate at invite time (D40).
     """
     job = repo.create_job(payload, org_id=recruiter.org_id, created_by=recruiter.id)
     background.add_task(

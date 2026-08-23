@@ -6,7 +6,7 @@ finding decides the next call: a repo whose name matches a claimed technology
 is worth opening; one that is a two-commit fork is not. That is what tools and
 a model-driven trajectory are actually for.
 
-**The asymmetry is the whole design (D34).** A supported claim raises
+**The asymmetry is the whole design (D39).** A supported claim raises
 confidence. A contradicted claim lowers it. **Finding nothing does neither.**
 Most professional work lives in private company repositories, so absence of
 public evidence says nothing about ability — and penalising it would quietly

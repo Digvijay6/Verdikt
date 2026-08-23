@@ -1,7 +1,7 @@
 /**
  * The job's scoring rubric, readable.
  *
- * This screen is load-bearing for D35. Once questions are generated per
+ * This screen is load-bearing for D40. Once questions are generated per
  * candidate, nobody reviews two thousand question sets — so the rubric becomes
  * the thing a human actually checks, and compliance.md now says as much. A
  * rubric that cannot be read is a promise we do not keep.

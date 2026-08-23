@@ -177,7 +177,7 @@ def set_question_bank_status(
 def save_rubric(job_id: str, org_id: str, rubric: JobRubric) -> None:
     """The job's scoring frame. Questions are generated per candidate against it.
 
-    `question_bank` is deliberately left untouched and unused (D35). A job that
+    `question_bank` is deliberately left untouched and unused (D40). A job that
     still holds an old bank keeps it as history; nothing reads it once a rubric
     exists.
     """
@@ -482,7 +482,7 @@ def save_questions(
 
 
 def save_questions_error(application_id: str, org_id: str, error: str) -> None:
-    """Generation failed. The invite still goes out (D35).
+    """Generation failed. The invite still goes out (D40).
 
     Recorded rather than raised so a recruiter can see why an interview will run
     on fallback questions, instead of finding out from the transcript.

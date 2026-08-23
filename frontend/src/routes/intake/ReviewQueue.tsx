@@ -46,7 +46,7 @@ type Application = {
   screening_model_id: string | null;
   screening_prompt_version: string | null;
 
-  // Written for this candidate from the job's rubric plus their resume (D35).
+  // Written for this candidate from the job's rubric plus their resume (D40).
   questions: Question[] | null;
   questions_model_id: string | null;
   questions_rubric_version: string | null;

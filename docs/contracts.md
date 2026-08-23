@@ -32,7 +32,7 @@ It raises `PackageUnavailable` rather than returning a package with no
 questions. An interview that starts and has nothing to ask is worse for the
 candidate than one that never starts.
 
-**The questions now vary per candidate (D35).** The `InterviewPackage` shape and
+**The questions now vary per candidate (D40).** The `InterviewPackage` shape and
 the `Question` shape are both unchanged — each question still carries its
 `dimensions`, and they are identical across candidates for the same competency.
 What changed is where they come from: `application.questions`, generated at

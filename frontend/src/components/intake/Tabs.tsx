@@ -75,14 +75,23 @@ export function Tabs({
               onClick={() => onChange(tab.id)}
               className="nb-tab"
             >
-              {/* Sits above the strip's background but below the label. It
-                  used to be -z-10, which put it behind the tab's own fill and
-                  made the active tab render white instead of lime. */}
+              {/* Carries the active tab's outline and fill, and extends 1.5px
+                  past its own bottom so it paints over the panel's top border.
+                  That erased seam is what makes tab and panel read as one
+                  piece of paper rather than a button sitting on a box.
+
+                  It is above the strip background and below the label. At
+                  -z-10 it sat behind the tab's own fill and was invisible. */}
               {isActive && (
                 <motion.span
                   aria-hidden
                   layoutId="tab-underlay"
-                  className="absolute inset-0 rounded-t-[0.9rem] bg-panel"
+                  className="absolute inset-x-0 top-0 rounded-t-[0.9rem] border-1.5 border-b-0 border-edge bg-panel"
+                  style={{
+                    bottom: "-1.5px",
+                    borderWidth: "1.5px",
+                    borderBottomWidth: 0,
+                  }}
                   transition={{ type: "spring", stiffness: 420, damping: 34 }}
                 />
               )}

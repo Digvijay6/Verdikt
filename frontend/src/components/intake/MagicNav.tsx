@@ -32,13 +32,13 @@ export function MagicNav({ items }: { items: NavItem[] }) {
             key={item.to}
             to={item.to}
             aria-current={isActive ? "page" : undefined}
-            className="relative rounded-full px-4 py-1.5 text-sm font-bold no-underline"
+            className="relative rounded-btn px-4 py-1.5 text-sm font-semibold no-underline"
           >
             {isActive && (
               <motion.span
                 layoutId="nav-pill"
-                className="absolute inset-0 -z-10 rounded-full bg-lime"
-                style={{ boxShadow: "var(--shadow-tile)" }}
+                className="absolute inset-0 -z-10 rounded-btn bg-lime"
+                style={{ boxShadow: "var(--shadow-btn)" }}
                 transition={{ type: "spring", stiffness: 420, damping: 34 }}
               />
             )}

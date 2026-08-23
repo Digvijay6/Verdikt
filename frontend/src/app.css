@@ -3,13 +3,19 @@
 /* Soft-brutalist theme, matched to the reference dashboard.
    Applied uniformly to recruiter and candidate screens alike.
 
-   The distinction that matters, because it is easy to get wrong: this is NOT
-   hard neobrutalism. Nothing carries a 2px black outline and a zero-blur black
-   shadow. The reference is softer than that -
+   The thing that defines this look is NOT a shadow. It is a second card:
+   a grey rectangle with its own thin black outline, same size and radius,
+   offset down-right behind a front card that also carries a thin black
+   outline. Two pieces of paper stacked - which is exactly what it reads as.
 
-     filled cards    no border at all, grey shadow offset down-right, blurred
-     pill buttons    thin dark border, small soft shadow
-     table rows      1px light grey border, no shadow
+   A drop shadow cannot do this, and that is the trap. A shadow fades from
+   every edge, meets the card edge to edge, and can never carry an outline of
+   its own. Everything here is zero blur: blur would smear the backing's
+   outline into its fill and collapse the pair back into an ordinary shadow.
+
+     cards, tiles   thin black outline + outlined grey card behind
+     pill buttons   same, at a smaller offset
+     table rows     1px light grey hairline, no backing at all
 
    Tailwind v4 keeps its config here rather than in a tailwind.config.js. These
    are real CSS custom properties, so they are readable at runtime and usable
@@ -33,15 +39,36 @@
   --color-line: #e7e7e2;
   --color-edge: #12141a;
 
+  /* Buttons and inputs share one radius so a row of controls lines up. Pills
+     are reserved for status chips, which are labels rather than controls. */
+  --radius-btn: 0.8rem;
   --radius-tile: 1.25rem;
   --radius-card: 1.5rem;
 
-  /* Grey, blurred, offset down-right. The offset is what gives the reference
-     its lift; the blur is what keeps it from reading as a printed sticker. */
-  --shadow-card: 8px 10px 14px -4px rgb(18 20 26 / 0.26);
-  --shadow-tile: 4px 6px 10px -3px rgb(18 20 26 / 0.16);
-  --shadow-btn: 2px 4px 7px -2px rgb(18 20 26 / 0.28);
-  --shadow-btn-active: 1px 1px 3px -1px rgb(18 20 26 / 0.3);
+  /* One hairline weight for everything, and the backing's outline uses the
+     same number as its spread. If the two differ by even half a pixel the
+     front card and the card behind it stop looking like the same object. */
+  --edge-w: 1px;
+
+  /* The grey card behind the card, outline and all.
+     box-shadow takes a list and paints later entries BEHIND earlier ones, so
+     two layers at the same offset make a real second card: the first is its
+     grey fill, the second is spread one hairline wider and shows only as an
+     outline around it. That is why this needs no extra DOM element.
+
+     Blur is zero throughout. A blurred edge would smear the outline into the
+     fill and the whole thing collapses back into an ordinary drop shadow. */
+  --color-backing: #aeaea7;
+
+  --shadow-card:
+    10px 12px 0 0 var(--color-backing),
+    10px 12px 0 var(--edge-w) var(--color-edge);
+  --shadow-tile:
+    6px 7px 0 0 var(--color-backing),
+    6px 7px 0 var(--edge-w) var(--color-edge);
+  --shadow-btn:
+    4px 5px 0 0 var(--color-backing),
+    4px 5px 0 var(--edge-w) var(--color-edge);
 
   --font-sans: "Poppins", system-ui, -apple-system, "Segoe UI", sans-serif;
 }
@@ -107,9 +134,10 @@
 
   /* --- surfaces --------------------------------------------------------- */
 
-  /* The workhorse panel. No border — the shadow does the separating, which is
-     what keeps a page of these from looking like a wireframe. */
+  /* The workhorse panel. The outline is thin and the backing does the lifting;
+     together they read as a card hovering over its double. */
   .nb-card {
+    border: var(--edge-w) solid var(--color-edge);
     border-radius: var(--radius-card);
     background: var(--color-panel);
     box-shadow: var(--shadow-card);
@@ -119,13 +147,14 @@
   /* Quiet container: a light hairline and no lift. For rows in a list, where
      a shadow each would turn the list into corduroy. */
   .nb-row {
-    border: 1px solid var(--color-line);
+    border: var(--edge-w) solid var(--color-line);
     border-radius: 1rem;
     background: var(--color-panel);
     padding: 0.7rem 0.9rem;
   }
 
   .nb-tile {
+    border: var(--edge-w) solid var(--color-edge);
     border-radius: var(--radius-tile);
     background: var(--color-panel);
     box-shadow: var(--shadow-tile);
@@ -140,8 +169,8 @@
     font: inherit;
     font-weight: 600;
     padding: 0.5rem 1.1rem;
-    border: 1.5px solid var(--color-edge);
-    border-radius: 999px;
+    border: var(--edge-w) solid var(--color-edge);
+    border-radius: var(--radius-btn);
     background: var(--color-panel);
     color: var(--color-ink);
     box-shadow: var(--shadow-btn);
@@ -151,9 +180,11 @@
       transform 0.08s ease,
       box-shadow 0.08s ease;
   }
+  /* Pressing slides the front card exactly onto its double, so the pair
+     becomes one card. The travel matches the offset for that reason. */
   .nb-btn:active:not(:disabled) {
-    transform: translate(1px, 2px);
-    box-shadow: var(--shadow-btn-active);
+    transform: translate(4px, 5px);
+    box-shadow: none;
   }
   .nb-btn:disabled {
     opacity: 0.45;
@@ -176,8 +207,8 @@
     font: inherit;
     color: var(--color-ink);
     background: var(--color-panel);
-    border: 1.5px solid var(--color-line);
-    border-radius: 0.85rem;
+    border: var(--edge-w) solid var(--color-line);
+    border-radius: var(--radius-btn);
     box-sizing: border-box;
   }
   .nb-input:focus {
@@ -214,17 +245,24 @@
     font: inherit;
     font-weight: 600;
     padding: 0.5rem 1.15rem 0.65rem;
-    border: none;
-    border-radius: 0.9rem 0.9rem 0 0;
-    background: transparent;
+    border: var(--edge-w) solid var(--color-edge);
+    border-bottom: none;
+    border-radius: 0.8rem 0.8rem 0 0;
+    /* Recessed: an inactive tab is the sheet *behind* the active one, so it
+       takes the page colour rather than the panel's white. */
+    background: var(--color-paper);
     color: var(--color-muted);
     cursor: pointer;
-    margin-bottom: -1px;
+    margin-bottom: calc(-1 * var(--edge-w));
   }
   .nb-tab[aria-selected="true"] {
     color: var(--color-ink);
+    /* The underlay element paints this tab's outline and fill instead, so the
+       button's own edge would double up along the same line. */
+    border-color: transparent;
   }
   .nb-tabpanel {
+    border: var(--edge-w) solid var(--color-edge);
     border-radius: 0 var(--radius-card) var(--radius-card) var(--radius-card);
     background: var(--color-panel);
     box-shadow: var(--shadow-card);

@@ -8,6 +8,7 @@ import {
   useLocation,
 } from "react-router-dom";
 
+import { MagicNav, type NavItem } from "./components/intake/MagicNav";
 import { AuthProvider, useAuth } from "./lib/auth";
 import ApplicationForm from "./routes/intake/ApplicationForm";
 import JobsPage from "./routes/intake/JobsPage";
@@ -39,16 +40,32 @@ function RequireOrg({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
+/** Nav is lane-aware: it lists every lane's surface, so the product reads as
+ *  one thing even while lanes 2 and 3 are still filling theirs in. */
+const NAV: NavItem[] = [
+  { to: "/jobs", label: "Jobs" },
+  { to: "/leaderboard", label: "Leaderboard" },
+  { to: "/candidates", label: "Candidates" },
+];
+
 function Header() {
   const { session, org, signOut } = useAuth();
   if (!session) return null;
   return (
-    <header className="topbar">
-      <Link to="/jobs" className="brand">
+    <header className="mx-auto flex max-w-[72rem] flex-wrap items-center gap-4 px-5 pt-5 pb-1">
+      <Link
+        to="/jobs"
+        className="text-xl font-extrabold tracking-tight no-underline"
+      >
         Verdikt
       </Link>
-      <span className="hint">{org?.name}</span>
-      <button onClick={() => void signOut()}>Sign out</button>
+
+      <MagicNav items={NAV} />
+
+      <span className="hint ml-auto">{org?.name}</span>
+      <button className="nb-btn" onClick={() => void signOut()}>
+        Sign out
+      </button>
     </header>
   );
 }

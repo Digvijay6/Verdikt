@@ -1,127 +1,222 @@
-/* Minimal shared styling. Deliberately plain — component-level design is a
-   later pass, and lane 3 owns the shared UI primitives. */
+@import "tailwindcss";
 
-:root {
-  --bg: #ffffff;
-  --fg: #16181d;
-  --muted: #6b7280;
-  --line: #e5e7eb;
-  --card: #fafafa;
-  --error: #b42318;
-  --accent: #1f2937;
+/* Neobrutalist theme.
+   Thick black borders, hard offset shadows with no blur, flat saturated fills.
+   Applied uniformly to recruiter and candidate screens alike — one product,
+   one look.
+
+   Tailwind v4 keeps its config here rather than in a tailwind.config.js. These
+   are real CSS custom properties, so they are readable at runtime and usable
+   outside a utility class. */
+@theme {
+  --color-ink: #000000;
+  --color-paper: #fffef9;
+  --color-panel: #ffffff;
+
+  /* Two accents carry meaning, and only two. Lime is a good outcome or the
+     active thing; lavender is a neutral counterpart used for contrast in
+     charts and secondary state. Adding a third makes all three decorative. */
+  --color-lime: #c7f56c;
+  --color-lavender: #b5aef6;
+
+  --color-muted: #6b7280;
+  --color-danger: #ff5c47;
+  --color-line: #000000;
+
+  --radius-tile: 1.25rem;
+  --radius-card: 1.5rem;
+
+  /* No blur. A blurred shadow reads as depth; a hard offset reads as a
+     printed, deliberate object, which is the whole point of the style. */
+  --shadow-hard: 4px 4px 0 0 var(--color-ink);
+  --shadow-hard-sm: 2px 2px 0 0 var(--color-ink);
+  --shadow-hard-lg: 6px 6px 0 0 var(--color-ink);
+
+  --font-sans: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #101114;
-    --fg: #e8eaed;
-    --muted: #9aa1ab;
-    --line: #2a2d34;
-    --card: #17191d;
-    --error: #f97066;
-    --accent: #e8eaed;
+@layer base {
+  html {
+    /* The reference has a soft green wash bleeding from the top-left. Fixed so
+       it does not slide away as the page scrolls. */
+    background:
+      radial-gradient(
+        60rem 40rem at 0% 0%,
+        color-mix(in srgb, var(--color-lime) 45%, transparent),
+        transparent 60%
+      ),
+      var(--color-paper);
+    background-attachment: fixed;
+  }
+
+  body {
+    margin: 0;
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    font-size: 15px;
+    line-height: 1.55;
+  }
+
+  h1 {
+    font-size: 2rem;
+    font-weight: 800;
+    letter-spacing: -0.02em;
+    margin: 0 0 0.25rem;
+  }
+
+  h2 {
+    font-size: 1.35rem;
+    font-weight: 800;
+    letter-spacing: -0.015em;
+    margin: 0 0 0.75rem;
+  }
+
+  /* Every focusable thing gets the same treatment. A 2px black border design
+     hides the default focus ring completely, which would leave keyboard users
+     with no visible position at all. */
+  :where(a, button, input, textarea, select, summary, [tabindex]):focus-visible {
+    outline: 3px solid var(--color-lavender);
+    outline-offset: 2px;
+  }
+
+  ::placeholder {
+    color: var(--color-muted);
   }
 }
 
-body {
-  margin: 0;
-  background: var(--bg);
-  color: var(--fg);
-  font: 15px/1.55 system-ui, -apple-system, "Segoe UI", sans-serif;
+@layer components {
+  .wrap {
+    max-width: 72rem;
+    margin: 0 auto;
+    padding: 2rem 1.25rem 5rem;
+  }
+  .wrap.narrow {
+    max-width: 26rem;
+  }
+
+  /* --- surfaces --------------------------------------------------------- */
+
+  .nb-card {
+    border: 2px solid var(--color-ink);
+    border-radius: var(--radius-card);
+    background: var(--color-panel);
+    box-shadow: var(--shadow-hard);
+    padding: 1.15rem 1.25rem;
+  }
+
+  .nb-tile {
+    border: 2px solid var(--color-ink);
+    border-radius: var(--radius-tile);
+    background: var(--color-panel);
+    box-shadow: var(--shadow-hard-sm);
+    padding: 0.85rem 0.95rem;
+  }
+
+  /* --- controls --------------------------------------------------------- */
+
+  .nb-btn {
+    font: inherit;
+    font-weight: 600;
+    padding: 0.5rem 1rem;
+    border: 2px solid var(--color-ink);
+    border-radius: 999px;
+    background: var(--color-panel);
+    color: var(--color-ink);
+    box-shadow: var(--shadow-hard-sm);
+    cursor: pointer;
+    transition:
+      transform 0.06s ease,
+      box-shadow 0.06s ease;
+  }
+  /* Press moves the object onto its own shadow. Cheap, and it makes the
+     button feel physical in a way a colour change does not. */
+  .nb-btn:active:not(:disabled) {
+    transform: translate(2px, 2px);
+    box-shadow: 0 0 0 0 var(--color-ink);
+  }
+  .nb-btn:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+    box-shadow: none;
+  }
+  .nb-btn-primary {
+    background: var(--color-lime);
+  }
+  .nb-btn-danger {
+    background: var(--color-danger);
+  }
+
+  .nb-input {
+    display: block;
+    width: 100%;
+    margin-top: 0.35rem;
+    padding: 0.6rem 0.75rem;
+    font: inherit;
+    color: var(--color-ink);
+    background: var(--color-panel);
+    border: 2px solid var(--color-ink);
+    border-radius: 0.75rem;
+    box-sizing: border-box;
+  }
+
+  /* --- text ------------------------------------------------------------- */
+
+  .hint {
+    color: var(--color-muted);
+    font-weight: 400;
+    font-size: 0.87rem;
+  }
+  .error {
+    color: var(--color-danger);
+    font-weight: 600;
+  }
+
+  /* --- the folder-tab seam ---------------------------------------------- */
+
+  /* The active tab fuses into the panel below it: its bottom border is erased
+     and it sits 2px lower to cover the panel's top edge. That seam is the
+     whole effect — without it the tabs read as buttons floating above a box. */
+  .nb-tabstrip {
+    display: flex;
+    gap: 0.4rem;
+    padding: 0 0.9rem;
+    position: relative;
+    z-index: 1;
+  }
+  .nb-tab {
+    position: relative;
+    font: inherit;
+    font-weight: 700;
+    padding: 0.55rem 1.1rem 0.7rem;
+    border: 2px solid var(--color-ink);
+    border-bottom: none;
+    border-radius: 0.9rem 0.9rem 0 0;
+    background: var(--color-panel);
+    color: var(--color-ink);
+    cursor: pointer;
+    margin-bottom: -2px;
+  }
+  .nb-tab[aria-selected="false"] {
+    background: color-mix(in srgb, var(--color-ink) 6%, var(--color-panel));
+    color: var(--color-muted);
+  }
+  .nb-tabpanel {
+    border: 2px solid var(--color-ink);
+    border-radius: 0 var(--radius-card) var(--radius-card) var(--radius-card);
+    background: var(--color-panel);
+    box-shadow: var(--shadow-hard);
+    padding: 1.25rem;
+  }
 }
 
-.wrap { max-width: 46rem; margin: 0 auto; padding: 2rem 1.25rem 4rem; }
-h1 { font-size: 1.5rem; margin: 0 0 1.25rem; }
-
-label { display: block; margin: 0 0 1rem; font-weight: 500; }
-input, textarea, select {
-  display: block;
-  width: 100%;
-  margin-top: 0.35rem;
-  padding: 0.55rem 0.65rem;
-  font: inherit;
-  color: var(--fg);
-  background: var(--bg);
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  box-sizing: border-box;
+/* Honour the OS setting. The magic nav is decorative; a slide that a reader
+   cannot tolerate is not worth keeping. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }
-input[type="checkbox"] { width: auto; display: inline; margin: 0.2rem 0 0; }
-textarea { resize: vertical; }
-
-.consent {
-  display: flex;
-  gap: 0.6rem;
-  align-items: flex-start;
-  font-weight: 400;
-  color: var(--muted);
-  font-size: 0.9rem;
-}
-
-button {
-  font: inherit;
-  padding: 0.5rem 0.9rem;
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  background: var(--card);
-  color: var(--fg);
-  cursor: pointer;
-}
-button:disabled { opacity: 0.55; cursor: not-allowed; }
-
-.card {
-  border: 1px solid var(--line);
-  background: var(--card);
-  border-radius: 8px;
-  padding: 1rem 1.1rem;
-  margin: 1rem 0;
-}
-.card header { display: flex; gap: 0.6rem; align-items: baseline; margin-bottom: 0.5rem; }
-.card footer { display: flex; gap: 0.6rem; align-items: center; margin-top: 0.85rem; flex-wrap: wrap; }
-
-.hint { color: var(--muted); font-weight: 400; font-size: 0.87rem; }
-.error { color: var(--error); }
-
-/* Pipeline tiles. Auto-fit rather than a fixed column count so the row reflows
-   on a narrow screen instead of overflowing. */
-.tiles {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(6.5rem, 1fr));
-  gap: 0.5rem;
-  margin: 0.75rem 0;
-}
-.tile {
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  padding: 0.5rem 0.6rem;
-  background: var(--bg);
-}
-.tile b { display: block; font-size: 1.25rem; line-height: 1.2; }
-.tile span { color: var(--muted); font-size: 0.78rem; }
-/* Only two tiles ever draw attention: work waiting on a person, and work that
-   broke. Colouring more than that makes the colour mean nothing. */
-.tile.attention { border-color: var(--error); }
-.tile.attention b { color: var(--error); }
-
-details { margin: 0.5rem 0; }
-summary { cursor: pointer; color: var(--muted); font-size: 0.9rem; }
-ul { margin: 0.4rem 0; padding-left: 1.1rem; }
-a { color: inherit; }
-
-/* Signed-in chrome. Deliberately minimal — the real UI is a later decision. */
-.topbar {
-  display: flex;
-  align-items: center;
-  gap: 0.9rem;
-  padding: 0.7rem 1.25rem;
-  border-bottom: 1px solid var(--line);
-}
-.topbar .brand {
-  font-weight: 600;
-  text-decoration: none;
-  margin-right: auto;
-}
-.topbar button { padding: 0.35rem 0.7rem; font-size: 0.9rem; }
-
-/* Auth forms read better narrow than the full content width. */
-.wrap.narrow { max-width: 24rem; }

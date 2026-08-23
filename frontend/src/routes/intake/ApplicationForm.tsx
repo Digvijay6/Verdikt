@@ -12,6 +12,7 @@
 import { useState } from "react";
 import { useParams } from "react-router-dom";
 
+import { Card } from "../../components/intake/primitives";
 import { api } from "../../lib/api";
 
 type Submitted = { application_id: string };
@@ -41,59 +42,102 @@ export default function ApplicationForm() {
 
   if (done) {
     return (
-      <main className="wrap">
-        <h1>Application received</h1>
-        <p>
-          Thanks. We're reviewing your application now. If you're a match you'll
-          get an email with a link to a short screening interview — usually
-          within a day.
-        </p>
+      <main className="wrap narrow">
+        <Card className="mt-10 bg-lime">
+          <h1>Application received</h1>
+          <p className="m-0">
+            Thanks. We're reviewing your application now. If you're a match
+            you'll get an email with a link to a short screening interview -
+            usually within a day.
+          </p>
+        </Card>
       </main>
     );
   }
 
   return (
-    <main className="wrap">
-      <h1>Apply</h1>
+    <main className="wrap narrow">
+      <h1 className="mt-6">Apply</h1>
+      <p className="hint mb-5">
+        Résumé screening, then a short AI interview if you're a match.
+      </p>
 
-      <form onSubmit={onSubmit}>
-        <label>
-          Email
-          <input name="email" type="email" required autoComplete="email" />
-        </label>
+      <Card>
+        <form onSubmit={onSubmit} className="grid gap-3.5">
+          <label>
+            Email
+            <input
+              className="nb-input"
+              name="email"
+              type="email"
+              required
+              autoComplete="email"
+            />
+          </label>
 
-        <label>
-          Full name
-          <input name="full_name" type="text" autoComplete="name" />
-        </label>
+          <label>
+            Full name
+            <input
+              className="nb-input"
+              name="full_name"
+              type="text"
+              autoComplete="name"
+            />
+          </label>
 
-        <label>
-          Phone <span className="hint">optional</span>
-          <input name="phone" type="tel" autoComplete="tel" />
-        </label>
+          <label>
+            Phone <span className="hint">optional</span>
+            <input
+              className="nb-input"
+              name="phone"
+              type="tel"
+              autoComplete="tel"
+            />
+          </label>
 
-        <label>
-          Résumé <span className="hint">PDF, up to 10MB</span>
-          <input name="resume" type="file" accept="application/pdf" required />
-        </label>
+          <label>
+            Résumé <span className="hint">PDF, up to 10MB</span>
+            <input
+              className="nb-input file:mr-3 file:rounded-full file:border-2 file:border-ink file:bg-lavender file:px-3 file:py-1 file:font-semibold"
+              name="resume"
+              type="file"
+              accept="application/pdf"
+              required
+            />
+          </label>
 
-        {/* Wording matters here — this is the disclosure, not a formality. */}
-        <label className="consent">
-          <input name="consent" type="checkbox" value="true" required />
-          <span>
-            I agree that my résumé may be processed by AI to assess my
-            application, and that if I'm invited to interview it will be
-            conducted by an AI interviewer and recorded. A human reviews every
-            outcome. I can request deletion of my data at any time.
-          </span>
-        </label>
+          {/* Wording matters here - this is the disclosure, not a formality. */}
+          <label className="flex items-start gap-2.5 rounded-xl border-2 border-ink bg-paper p-3 text-sm font-normal">
+            <input
+              name="consent"
+              type="checkbox"
+              value="true"
+              required
+              className="mt-1 size-4 shrink-0 accent-black"
+            />
+            <span>
+              I agree that my résumé may be processed by AI to assess my
+              application, and that if I'm invited to interview it will be
+              conducted by an AI interviewer and recorded. A human reviews every
+              outcome. I can request deletion of my data at any time.
+            </span>
+          </label>
 
-        {error && <p role="alert" className="error">{error}</p>}
+          {error && (
+            <p role="alert" className="error m-0">
+              {error}
+            </p>
+          )}
 
-        <button type="submit" disabled={busy}>
-          {busy ? "Submitting…" : "Submit application"}
-        </button>
-      </form>
+          <button
+            type="submit"
+            className="nb-btn nb-btn-primary justify-self-start"
+            disabled={busy}
+          >
+            {busy ? "Submitting..." : "Submit application"}
+          </button>
+        </form>
+      </Card>
     </main>
   );
 }

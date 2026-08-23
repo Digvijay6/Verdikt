@@ -34,14 +34,14 @@ export default function Login() {
     <main className="wrap narrow">
       <h1>Sign in</h1>
 
-      <form onSubmit={onSubmit} className="card">
+      <form onSubmit={onSubmit} className="nb-card">
         <label>
           Work email
-          <input name="email" type="email" required autoComplete="email" autoFocus />
+          <input className="nb-input" name="email" type="email" required autoComplete="email" autoFocus />
         </label>
         <label>
           Password
-          <input
+          <input className="nb-input"
             name="password"
             type="password"
             required
@@ -55,7 +55,7 @@ export default function Login() {
           </p>
         )}
 
-        <button type="submit" disabled={busy}>
+        <button className="nb-btn nb-btn-primary" type="submit" disabled={busy}>
           {busy ? "Signing in..." : "Sign in"}
         </button>
       </form>

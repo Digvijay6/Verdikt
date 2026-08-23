@@ -11,9 +11,10 @@ from __future__ import annotations
 
 import logging
 
-from shared.models.candidate import ApplicationStatus, ScreeningOutcome
+from shared.models.candidate import Application, ApplicationStatus, ScreeningOutcome
+from shared.models.job import Job
 
-from . import evidence, hard_checks, invites, parsing, repo, screening
+from . import evidence, hard_checks, invites, parsing, questions, repo, screening
 
 log = logging.getLogger(__name__)
 
@@ -117,6 +118,53 @@ def _process(application_id: str, org_id: str) -> None:
     # REVIEW: left at `review`, which is what the recruiter queue reads.
 
 
+def _ensure_questions(application: Application, job: Job, org_id: str) -> None:
+    """Write this candidate's probes, once, before the invite goes out.
+
+    Here rather than at redeem for two reasons. The candidate never waits on an
+    LLM call after clicking their link. And a dropped connection rejoining gets
+    the identical questions (D12) — regenerating on reconnect would hand someone
+    a second, easier interview.
+
+    A failure never blocks the invite. Lane 2 falls back to the job-wide bank and
+    the recruiter can retry; an unsendable invite is worse than a late question
+    set.
+    """
+    if application.questions:
+        return
+    if job.rubric is None:
+        log.warning(
+            "job %s has no rubric; application %s will fall back to the "
+            "job-wide question bank",
+            job.id,
+            application.id,
+        )
+        return
+    if application.parsed_resume is None:
+        log.warning(
+            "application %s has no parsed resume; skipping questions", application.id
+        )
+        return
+
+    try:
+        generated, provenance = questions.generate(
+            job, job.rubric, application.parsed_resume
+        )
+        repo.save_questions(
+            application.id,
+            org_id,
+            generated,
+            provenance.model_id,
+            provenance.prompt_version,
+        )
+        log.info(
+            "generated %d questions for application %s", len(generated), application.id
+        )
+    except Exception as exc:
+        log.exception("question generation failed for application %s", application.id)
+        repo.save_questions_error(application.id, org_id, str(exc))
+
+
 def send_invite(application_id: str, org_id: str) -> None:
     """Mint an invite and email it.
 
@@ -134,6 +182,8 @@ def send_invite(application_id: str, org_id: str) -> None:
     candidate = repo.get_candidate(application.candidate_id, org_id)
     if candidate is None:
         raise ValueError(f"No candidate {application.candidate_id}")
+
+    _ensure_questions(application, job, org_id)
 
     token, token_hash, expires_at = invites.mint_token()
     repo.create_invite(org_id, application_id, token_hash, expires_at)

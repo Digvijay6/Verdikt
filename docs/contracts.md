@@ -15,6 +15,31 @@ Deliberately excludes the candidate's name and demographic detail. The
 interviewer agent does not need them, and blind conduct is easier to defend than
 blind conduct retrofitted after a complaint.
 
+### Build it with `intake.packaging.build_interview_package()`
+
+```python
+from intake.packaging import build_interview_package, PackageUnavailable
+
+package = build_interview_package(application_id, org_id, interview_id)
+```
+
+Lane 2 should not assemble this itself. It used to fetch the application,
+validate `job.question_bank` into `Question` objects and format a resume summary
+inline — all three are lane 1 models, so every change to them broke lane 2's
+file. Behind this function they stop being lane 2's problem.
+
+It raises `PackageUnavailable` rather than returning a package with no
+questions. An interview that starts and has nothing to ask is worse for the
+candidate than one that never starts.
+
+**The questions now vary per candidate (D35).** The `InterviewPackage` shape and
+the `Question` shape are both unchanged — each question still carries its
+`dimensions`, and they are identical across candidates for the same competency.
+What changed is where they come from: `application.questions`, generated at
+invite time, with `job.question_bank` as the fallback for jobs built before the
+switch. That is exactly the reason to go through this function; the fallback
+lives inside it.
+
 ### Redeem order of operations
 
 1. Hash the presented token, look up the invite
@@ -22,7 +47,7 @@ blind conduct retrofitted after a complaint.
 3. If it redeemed into an `IN_PROGRESS` interview inside the rejoin window,
    reuse that interview and room — this is what survives a dropped connection
 4. Otherwise create the `Interview` row and a LiveKit room
-5. Assemble the `InterviewPackage`, dispatch the agent with it as metadata
+5. `build_interview_package(...)`, dispatch the agent with it as metadata
 6. Mint a short-lived LiveKit access token scoped to that room and identity
 7. Return the access token. Never return or log the invite token
 

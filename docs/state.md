@@ -48,8 +48,9 @@ Gemini and Resend, with a real resume, and the invite email arrived.
 
 ```
 job created -> requirements extracted from the JD by Gemini
-            -> ADK question_builder produces the bank
+            -> ADK question_builder produces the *rubric*
    application received -> parsed -> hard checks -> LLM screen
+            -> questions generated for this candidate from rubric + resume
             -> invite minted -> email delivered
 ```
 
@@ -63,7 +64,12 @@ job created -> requirements extracted from the JD by Gemini
 - LLM screen with required evidence quotes and provenance
 - Dashboard tiles, review queue, decisions recording `decided_by`
 - `intake/question_builder.py` — ADK workflow (D9): SequentialAgent ->
-  ParallelAgent -> LlmAgent -> LoopAgent, 7 LLM sub-agents
+  LlmAgent -> LoopAgent, 4 LLM sub-agents. Produces `job.rubric`: competencies,
+  BARS anchors, weights. **Not questions** (D35)
+- `intake/questions.py` — one `llm.run()` writing this candidate's probes from
+  the rubric plus their resume. Dimensions are attached by rubric lookup, never
+  copied by the model — that is what keeps two candidates comparable
+- `intake/packaging.py` — `build_interview_package()`, the lane 2 handoff
 - `intake/evidence.py` — ADK agent checking a candidate's claims against the
   GitHub link **they supplied** (D34). Verification, not sourcing: GitHub's AUP
   forbids using API data for recruiting outreach. Genuinely agentic — each
@@ -80,8 +86,26 @@ job created -> requirements extracted from the JD by Gemini
 ## Lane 2 — in flight on `ai-call`
 
 Voice state machine, scoring pipeline, proctor, agent worker, redeem endpoint,
-room metadata, silero VAD. Seven commits unmerged. They have added
+room metadata, silero VAD. Eight commits unmerged. They have added
 `livekit-plugins-silero` and `structlog` to the `[voice]` extra.
+
+**One change waiting for them.** Their redeem assembles the `InterviewPackage`
+itself — fetching the application, validating `job.question_bank` into
+`Question` objects, formatting a resume summary. All lane 1 models. Replace that
+block (`api/routers/interview.py` on `ai-call`, ~lines 175-222) with
+`build_interview_package(application_id, org_id, interview_id)`, about -32 lines
+and +1. Until they do, jobs built after D35 hand them a null `question_bank` and
+redeem fails loudly, which is the intended failure: better than silently parsing
+a rubric into nonsense.
+
+Two things that change on its own merits, not just for D35:
+
+- Their inline summary opens with `resume_highlights.full_name`, which **D14
+  forbids** — the interviewer agent is meant to be blind to name and
+  demographics. `packaging.resume_summary()` omits it.
+- Their redeem reads `application` joined to `job` with no `org_id` filter,
+  relying on the invite lookup for scoping. `build_interview_package()` takes
+  `org_id` and filters on it, per the repo rule.
 
 ## Three coordination failures worth learning from
 
@@ -147,8 +171,11 @@ database cannot catch it.
   post-call over recorded tracks
 - **`BackgroundTasks` is in-process** — a restart mid-pipeline loses the work,
   though the application is marked `failed` rather than sitting invisibly
-- **Question bank builds take ~4 minutes** (11 LLM calls with a revise loop).
-  Create jobs before a demo, not during one
+- **Rubric builds take ~2 minutes** (4-6 LLM calls with a revise loop). Create
+  jobs before a demo, not during one
+- **Per-candidate question generation adds ~20s at invite**, one call. It runs
+  in the background after the recruiter's request returns, and a failure is
+  recorded rather than blocking the invite (D35)
 - **Resend sandbox** delivers only to the account owner until a domain is
   verified
 
@@ -175,9 +202,16 @@ database cannot catch it.
 
 ## Recently decided
 
-D25-D34. Most consequential: **D25** (isolation enforced by the database),
+D25-D35. Most consequential: **D25** (isolation enforced by the database),
 **D30** (the model gets today's date), **D33** (Google for Jobs, not LinkedIn),
-**D34** (verify claims from supplied links; never source strangers).
+**D34** (verify claims from supplied links; never source strangers), **D35**
+(fixed rubric per job, questions per candidate — supersedes D16).
+
+D35 is the one to read before touching anything scoring-adjacent. The rule it
+turns on: **the invariant a leaderboard needs is the scoring frame, not the
+question wording.** Anchors must be portable — scorable without knowing which
+probe produced the answer — so no anchor may name a technology. Verified on a
+live build: 105 anchors, zero technology mentions.
 
 D34 carries the four-verdict model, which is the part worth reading before
 touching evidence: `supported` raises confidence, `related` raises it modestly,

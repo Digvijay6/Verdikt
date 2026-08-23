@@ -10,6 +10,8 @@ from enum import StrEnum
 
 from pydantic import BaseModel, EmailStr, Field
 
+from .job import Question
+
 
 # --- Resume parsing -------------------------------------------------------
 # Passed to Gemini as response_schema; response.parsed returns ParsedResume.
@@ -143,6 +145,14 @@ class Application(BaseModel):
     # model and prompt changes (D5).
     screening_model_id: str | None = None
     screening_prompt_version: str | None = None
+
+    # Probes generated for this candidate from job.rubric plus their parsed
+    # resume. Each carries a copy of its competency's dimensions, so lane 2 and
+    # lane 3 see an unchanged Question shape.
+    questions: list[Question] | None = None
+    questions_model_id: str | None = None
+    questions_prompt_version: str | None = None
+    questions_error: str | None = None
 
     consent_given_at: datetime
 

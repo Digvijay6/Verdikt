@@ -179,7 +179,11 @@ Not forgotten, not in scope for the hackathon:
 - Tier 2 extension and Tier 3 native proctoring client.
 - Outcome loop — tying scores to 30/60/90-day performance.
 
-## D16 · Question bank is generated once per job
+## D16 · Question bank is generated once per job — SUPERSEDED by D35
+
+**Superseded 2026-08-23.** The reasoning below is sound about *what* has to stay
+constant and wrong about *which part of the interview that is*. Kept because the
+comparability argument still applies — D35 satisfies it differently.
 
 **Chosen:** one bank per job. Every candidate for a role gets the identical
 questions and the identical rubric.
@@ -662,6 +666,80 @@ for.
 **Proved itself on the first real run.** The screen had earlier rejected a
 candidate partly for "Python absent from the resume". The agent found a 106 KB
 FastAPI-and-PostgreSQL repository under a link that candidate had supplied.
+
+## D35 · Fixed rubric per job, questions generated per candidate
+
+**Supersedes D16.**
+
+**Chosen:** the job carries competencies, BARS anchors and weights. The probes
+that elicit them are written per candidate at invite time, from `job.rubric`
+plus their parsed resume.
+
+**Rejected:** one fixed question bank shared by every applicant (D16).
+
+**Why the reversal.** D16 was right that a leaderboard needs an invariant. It
+picked the wrong one. The invariant a leaderboard needs is **the scoring frame,
+not the question wording**.
+
+| Fixed per job | Generated per candidate |
+|---|---|
+| competencies | the probe that elicits each one |
+| BARS anchors, 1-5 | the poison question |
+| dimension weights | drawn from their resume + the JD |
+| `rubric_version` | |
+
+Three problems with a fixed bank, in the order they bite:
+
+1. **It leaks.** A bank is posted online after a handful of candidates. Later
+   applicants arrive rehearsed, and the scores keep looking reasonable while
+   measuring preparation instead of ability.
+2. **Generic questions have a signal ceiling.** "How have you used Kafka?" gets
+   a textbook answer from anyone who read the docs. It cannot separate
+   at-least-once notification delivery, where a duplicate is harmless, from
+   exactly-once payment processing, where it is not. Those are different
+   competencies wearing the same word.
+3. **The leaderboard ranks interview performance.** If the questions do not
+   reach what the candidate actually built, the score measures the wrong thing.
+
+**What keeps scores comparable.** Two candidates are asked different questions
+about the same competency and scored against byte-identical anchors. The model
+writes the probe and tags a competency; **we** attach that competency's
+dimensions by lookup in `intake/questions.py`. Asking the model to copy anchors
+would eventually score one candidate against subtly different ones, which is the
+exact failure this design exists to prevent.
+
+**The constraint that makes it work — portable anchors.** An anchor must be
+scorable without knowing which probe produced the answer.
+
+- Portable: *"Explains a specific failure mode and how they handled it."*
+- Not portable: *"Mentions idempotency keys"* — correct for payments, wrong for
+  notifications, and it would mark the notification candidate down for a correct
+  answer about their own system.
+
+So no anchor may name a technology, vendor or pattern. That constraint lands
+entirely on `qb/rubric-writer.v2.md` and is enforced by `qb/validator.v2.md`.
+**Verified 2026-08-23** on a live build: 7 competencies, 105 anchors, zero
+technology mentions; two contrasting resumes produced entirely different probes
+with identical dimensions on all 7 shared competencies, and different poison
+questions.
+
+**Generation happens at invite, not at redeem.** The candidate never waits on a
+model call after clicking their link, and a dropped connection rejoining gets
+the identical set (D12).
+
+**A generation failure never blocks the invite.** It is recorded on
+`application.questions_error` and the invite goes out anyway. Lane 2 falls back
+to the job-wide bank; an unsendable invite is worse than a late question set.
+
+**The cost, stated plainly.** Nobody reviews 2,000 question sets. Today a
+recruiter reads one bank and judges it; per-candidate they cannot. Quality
+control moves onto the rubric — which *is* reviewable, and which is what
+determines scores — plus the generation prompt. The questions themselves become
+unreviewed. That is a real reduction in oversight, accepted knowingly.
+
+**One poison question per candidate**, invented to fit their stack. A fixed one
+leaks first, being the most memorable question in the interview. Still never
+auto-rejects (hard rule 9).
 
 ---
 

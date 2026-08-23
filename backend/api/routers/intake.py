@@ -31,7 +31,7 @@ from fastapi import (
 from pydantic import BaseModel, EmailStr
 
 from intake import pipeline, repo, requirements
-from intake.question_builder import build_question_bank
+from intake.question_builder import build_rubric
 from shared.models.candidate import Application, ApplicationStatus
 from shared.models.job import (
     Job,
@@ -67,7 +67,7 @@ def _create_job_assets(job_id: str, org_id: str, extract_profile: bool) -> None:
             repo.save_screening_profile(
                 job_id, org_id, profile, ProfileSource.AI, prov.model_id
             )
-    build_question_bank(job_id, org_id)
+    build_rubric(job_id, org_id)
 
 
 @router.post("/jobs", response_model=Job, status_code=status.HTTP_201_CREATED)
@@ -79,9 +79,13 @@ def create_job(
     """Create a job and start building its assets.
 
     Omit `screening_profile` and Gemini extracts the hard requirements from the
-    JD. The question bank is a multi-step workflow with a validation loop, so
-    the job returns immediately with `question_bank_status: building` and the
-    client polls.
+    JD. The rubric is a multi-step workflow with a validation loop, so the job
+    returns immediately with `question_bank_status: building` and the client
+    polls. (That column is named for the question bank it used to build;
+    migrations are additive only, so it kept the name.)
+
+    The rubric is the *scoring frame* — competencies and anchors. The questions
+    themselves are written per candidate at invite time (D35).
     """
     job = repo.create_job(payload, org_id=recruiter.org_id, created_by=recruiter.id)
     background.add_task(
@@ -142,12 +146,16 @@ def update_job(
 ) -> Job:
     """Edit the job. Typos, a changed scope, a requirement that moved.
 
-    **Editing the JD invalidates the question bank**, because the questions and
-    their anchors were generated from it. `rebuild_questions` therefore defaults
-    to true whenever `jd_text` changes: leaving a bank that interrogates a role
-    the posting no longer describes is worse than the few minutes a rebuild
-    costs. Pass `?rebuild_questions=false` to skip it for a trivial edit like
-    fixing a spelling mistake.
+    **Editing the JD invalidates the rubric**, because the competencies and
+    their anchors were derived from it. `rebuild_questions` therefore defaults
+    to true whenever `jd_text` changes: leaving a rubric that scores a role the
+    posting no longer describes is worse than the few minutes a rebuild costs.
+    Pass `?rebuild_questions=false` to skip it for a trivial edit like fixing a
+    spelling mistake.
+
+    Candidates already invited keep the questions they were given. Regenerating
+    those would mean someone who opened their link yesterday and someone who
+    opens it tomorrow are asked about different roles.
 
     The screening profile is deliberately *not* re-extracted. Once a recruiter
     has reviewed those requirements, silently regenerating them because a
@@ -164,7 +172,7 @@ def update_job(
     repo.update_job(job_id, recruiter.org_id, fields)
 
     if "jd_text" in fields and rebuild_questions:
-        background.add_task(build_question_bank, job_id, recruiter.org_id)
+        background.add_task(build_rubric, job_id, recruiter.org_id)
 
     refreshed = repo.get_job(job_id, recruiter.org_id)
     assert refreshed is not None
@@ -226,15 +234,19 @@ def rebuild_questions(
     background: BackgroundTasks,
     recruiter: Recruiter = Depends(current_recruiter),
 ) -> dict[str, str]:
-    """Regenerate the bank — after editing the JD, or if a build failed.
+    """Regenerate the rubric — after editing the JD, or if a build failed.
 
-    This changes the questions and their anchors, so it bumps `rubric_version`.
-    Interviews already scored under the old version stay interpretable; new ones
-    are not comparable to them.
+    This changes the competencies and their anchors, so it bumps
+    `rubric_version`. Interviews already scored under the old version stay
+    interpretable; new ones are not comparable to them.
+
+    Candidates invited before the rebuild keep their existing questions, which
+    were written against the old anchors. That is the reason the version bump
+    matters rather than being bookkeeping.
     """
     if repo.get_job(job_id, recruiter.org_id) is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "No such job")
-    background.add_task(build_question_bank, job_id, recruiter.org_id)
+    background.add_task(build_rubric, job_id, recruiter.org_id)
     return {"status": "building"}
 
 

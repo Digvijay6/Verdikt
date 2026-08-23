@@ -442,6 +442,54 @@ each application is what makes that visible.
 
 ---
 
+## D31 · Scores get a table, explanations stay in the contract JSON
+
+**Chosen:** post-call scoring writes one `interview_score` row per interview.
+The table carries rankable summary columns (`overall`, `display_score`,
+`recommendation`, `integrity`, provenance) and the full
+`InterviewResult` JSON.
+
+**Rejected:** keeping scores only as columns on `interview`, and rejected
+fully normalising every dimension/evidence quote into SQL tables.
+
+**Why:** the leaderboard needs cheap, indexed reads over scores by
+`(org_id, job_id)`, while the recruiter detail/chat needs the exact structured
+contract with evidence quotes. Fully normalising the entire score tree would
+make every contract change a migration and would split the legally important
+explanation across many rows. Storing the full contract beside indexed summary
+columns gives Lane 3 fast ranking without losing auditability.
+
+**Tenant rule:** `interview_score` carries `org_id` and uses composite foreign
+keys back to `interview`, `application`, and `job`, matching D25.
+
+---
+
+## D32 · Fixed 0-100 rubric, deterministic aggregation
+
+**Chosen:** `score-answer.v2` extracts five fixed measurements: technical
+accuracy, project depth, ownership, follow-up resilience, and consistency.
+Plain Python applies the ownership cap, consistency penalties, seniority
+weights, must-have cap, and human-review triggers. The leaderboard ranks on the
+resulting 0-100 `composite_score`.
+
+**Rejected:** asking Gemini for the final composite or review decision, and
+keeping the earlier 55% per-question / 30% holistic / 15% role-fit formula as a
+second ranking score.
+
+**Why:** fixed anchors make candidates comparable; deterministic arithmetic
+makes the outcome reproducible and auditable. Two simultaneous composite
+formulas would let the detail page and leaderboard disagree. Holistic and role
+fit remain available as explanatory v1 compatibility data but do not alter a
+v2 composite.
+
+**Compatibility:** `overall` remains as `1 + 4 * composite / 100`, allowing old
+1-5 consumers and v1 rows to remain readable. New rows carry both values and
+their rubric/model/prompt provenance.
+
+**Integrity:** integrity evidence triggers human review but does not reduce the
+v2 composite and never causes automatic rejection. This supersedes the earlier
+unimplemented note about a multiplicative integrity penalty.
+
 ---
 
 ## Provenance of the original plan

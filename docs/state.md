@@ -3,7 +3,7 @@
 **The only file here that changes often.** Update it when you finish a piece of
 work. Everything else in `docs/` is stable by design.
 
-Last updated: 2026-08-22
+Last updated: 2026-08-23
 
 ---
 
@@ -11,7 +11,8 @@ Last updated: 2026-08-22
 
 Supabase project provisioned, schema rebuilt for multi-tenancy and applied.
 
-- **11 tables + 1 view present**, verified against the live project
+- **11 tables + 1 view present**, verified against the live project. The new
+  `interview_score` and scoring-rubric-v2 migrations are ready to push.
 - **Cross-org isolation verified**, not assumed. Attaching an application to
   another org's job fails on `application_org_id_job_id_fkey`; pairing an org's
   job with another org's candidate fails on the candidate FK. Postgres refuses
@@ -19,7 +20,8 @@ Supabase project provisioned, schema rebuilt for multi-tenancy and applied.
 - **`resumes` bucket** created: private, PDF only, 10 MB cap
 - **`docker compose up`** boots api (:8000) and frontend (:5173) in ~3s
 
-**42 tests passing.**
+**47 non-ADK backend tests passing.** The question-builder suite cannot collect
+in the current local venv because `google.adk` is not installed.
 
 ## Built
 
@@ -28,6 +30,35 @@ Supabase project provisioned, schema rebuilt for multi-tenancy and applied.
 - `shared/plans.py` — tier limits with per-org override
 - `shared/tenancy.py` — membership resolution
 - `api/deps.py` — org resolved from membership per request, 7 tests
+- Repo scaffold — full tree, pushed to `Digvijay6/Verdikt` on `main`
+- `backend/shared/models/` — **all three model files are complete.** These are
+  the cross-lane contracts. `candidate.py` 🔵, `interview.py` 🟡,
+  `scoring.py` 🟡🟢
+- `backend/shared/llm.py` — registry-driven `run(task, schema)`, returns
+  `(parsed, Provenance)`
+- `backend/shared/config.py`, `db.py`
+- `backend/api/main.py` — app, CORS, routers mounted
+- `backend/api/deps.py` — Supabase JWT verification
+- `backend/api/routers/insights.py` — org-scoped leaderboard and interview
+  detail read `interview_score` rows and stored `InterviewResult` payloads
+- `supabase/migrations/20260822000001_lane_all_initial_schema.sql` and
+  `20260822120000_lane_all_multitenancy.sql` — shared tables for intake,
+  interview, insights, and multi-tenant isolation
+- `supabase/migrations/20260823090000_lane_all_interview_score.sql` — additive
+  `interview_score` table for leaderboard/detail score reads
+- `supabase/migrations/20260823100000_lane_all_scoring_rubric_v2.sql` — additive
+  0-100 rubric aggregates and review reasons for `interview_score`
+- `backend/shared/interview_scoring.py` — deterministic seniority weights,
+  ownership cap, consistency penalties, must-have cap, and review triggers
+- `llm/prompts/score-answer.v2.md` — fixed technical accuracy, depth, ownership,
+  follow-up resilience, and consistency anchors; registry task bumped to v2
+- `frontend/src/lib/api.ts` — typed client, public vs authenticated split
+- `frontend/` — Vite + React + Router skeleton
+- `llm/registry.json` — all 8 tasks registered
+- `llm/prompts/score-answer.v2.md`, `screen-application.v1.md` — written
+  properly, they encode the rubric and bias rules
+- Docs: `architecture.md`, `decisions.md`, `contracts.md`, `rubric.md`,
+  `compliance.md`, plus `CLAUDE.md`
 
 **Lane 1 — backend**
 - `intake/hard_checks.py` — deterministic gate, 16 tests
@@ -66,10 +97,28 @@ startup, so it looks fine until the first build silently fails.
 | Concurrency and monthly limits are recorded but nothing enforces them | 1 / 2 |
 | Rate limiting on the public application endpoint | 1 |
 | Calibration set, 20–30 hand-scored answers (D5) | 1 |
-| 6 of 9 prompts still stubs — `interviewer-system`, `score-*`, `recruiter-chat` | mixed |
+| Remaining prompt stubs — `interviewer-system`, `score-answer-live`, `score-holistic`, `recruiter-chat` | mixed |
 | `backend/voice/**` — agent entrypoint stubbed only | 2 |
 | Browser proctor detectors | 2 |
-| `recruiter_chat` ADK agent, leaderboard, outreach | 3 |
+| `recruiter_chat` ADK agent and outreach | 3 |
+- Initial migrations now exist. They still need to be pushed to Supabase before
+  backend routes can return real data.
+
+## Not built yet
+
+| Item | Lane | Note |
+|---|---|---|
+| Push migrations to Supabase | shared | run `supabase db push` after linking the project |
+| `backend/agents/question_builder/` | 🔵 | ADK Sequential → Parallel → Loop. Replaces the weakest prompt |
+| Intake flow end to end | 🔵 | apply → parse → hard checks → screen → invite email |
+| Remaining prompt stubs | mixed | `interviewer-system`, `score-answer-live`, `score-holistic`, and `recruiter-chat` |
+| Most router handlers | mixed | intake/interview remain stubbed; insights leaderboard/detail reads are wired |
+| `backend/voice/**` | 🟡 | agent entrypoint stubbed only |
+| Browser proctor detectors | 🟡 | `frontend/src/lib/proctor/` empty |
+| `backend/agents/recruiter_chat/` | 🟢 | ADK LlmAgent + tools + sessions |
+| Frontend routes | all | placeholders |
+| Calibration set | 🔵 | 20–30 hand-scored answers. Required before real candidates — see D5 |
+| Consent screens | 🔵 | see `compliance.md` |
 
 ## Blocking other lanes
 
@@ -81,7 +130,8 @@ Nothing, but **both lanes must read D25–D27 before writing queries.**
 - Resolve the org from `current_recruiter`, never from a path parameter.
 - **Lane 2** — `POST /interview/redeem` is stubbed; order of operations in
   `docs/contracts.md`. The concurrency check belongs here.
-- **Lane 3** — leaderboard and detail endpoints stubbed.
+- **Lane 3** — leaderboard and detail endpoints read `interview_score`; the
+  recruiter chat agent and outreach actions are still pending.
 
 ## Known constraints
 

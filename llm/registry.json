@@ -67,9 +67,9 @@
       "version": "v1"
     },
     "score-answer": {
-      "prompt": "score-answer.v1.md",
+      "prompt": "score-answer.v2.md",
       "model": "gemini-3.1-pro-preview",
-      "version": "v1"
+      "version": "v2"
     },
     "score-holistic": {
       "prompt": "score-holistic.v1.md",

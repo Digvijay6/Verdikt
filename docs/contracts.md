@@ -40,6 +40,22 @@ Lane 3's entire value is answering "why did it score a 3 on depth?" — without 
 quote it can only paraphrase, which is the black-box behaviour we are
 differentiating against.
 
+Rubric v2 adds `AnswerScore.fixed_rubric`, containing the anchored 0-100
+technical accuracy, project depth, follow-up resilience, ownership, and
+consistency measurements. Lane 2 must pass the completed answer list through
+`shared.interview_scoring.apply_rubric_to_result()` before persisting it. The
+function, not the LLM, calculates seniority weights, caps, penalties, the final
+composite, and human-review reasons.
+
+Lane 2 then serializes the completed contract with
+`shared.interview_scoring.build_interview_score_row()` before inserting or
+upserting `interview_score`. This keeps indexed summary columns and the full
+`result` JSON identical.
+
+`InterviewResult.overall` remains a derived 1-5 compatibility field. Lane 3
+ranks new results by `composite_score`; it falls back to `overall` only for v1
+rows that have not been re-scored.
+
 ## Changing either
 
 Both are Pydantic models, so a change ripples to OpenAPI, the frontend's

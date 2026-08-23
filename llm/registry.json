@@ -70,9 +70,9 @@
       "version": "v1"
     },
     "recruiter-chat": {
-      "prompt": "recruiter-chat.v1.md",
+      "prompt": "recruiter-chat.v2.md",
       "model": "gemini-3.1-pro-preview",
-      "version": "v1"
+      "version": "v2"
     },
     "candidate-evidence": {
       "prompt": "candidate-evidence.v3.md",

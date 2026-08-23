@@ -1,5 +1,8 @@
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { type FormEvent, useState } from "react";
+import ReactMarkdown from "react-markdown";
 import { Link, useLocation, useParams } from "react-router-dom";
+import remarkGfm from "remark-gfm";
 
 import {
   formatLabel,
@@ -14,9 +17,9 @@ import type {
   AnswerScore,
   InterviewResult,
   LeaderboardEntry,
+  RecruiterChatSession,
   RubricEvidence,
 } from "../../components/insights/types";
-import "../../components/insights/insights.css";
 import { api } from "../../lib/api";
 
 type LocationState = { candidateName?: string; jobId?: string } | null;
@@ -154,6 +157,11 @@ export default function CandidateDetailPage() {
         )}
       </section>
 
+      <RecruiterChatPanel
+        candidateName={candidateName}
+        interviewId={result.interview_id}
+      />
+
       <section className="candidate-section">
         <div className="candidate-section-head">
           <div>
@@ -199,6 +207,131 @@ export default function CandidateDetailPage() {
         </div>
       </footer>
     </main>
+  );
+}
+
+const starterQuestions = [
+  "Why did this candidate receive this composite score?",
+  "What is the strongest evidence in this interview?",
+  "Which concern needs the most human review?",
+];
+
+function RecruiterChatPanel({
+  candidateName,
+  interviewId,
+}: {
+  candidateName: string;
+  interviewId: string;
+}) {
+  const [message, setMessage] = useState("");
+  const queryClient = useQueryClient();
+  const queryKey = ["recruiter-chat", interviewId] as const;
+  const chatQuery = useQuery({
+    queryKey,
+    queryFn: () =>
+      api.get<RecruiterChatSession>(`/insights/interviews/${interviewId}/chat`),
+  });
+  const sendMessage = useMutation({
+    mutationFn: (content: string) =>
+      api.post<RecruiterChatSession>(`/insights/interviews/${interviewId}/chat`, {
+        message: content,
+      }),
+    onSuccess: (session) => {
+      queryClient.setQueryData(queryKey, session);
+      setMessage("");
+    },
+  });
+
+  const submit = (event: FormEvent) => {
+    event.preventDefault();
+    const content = message.trim();
+    if (content && !sendMessage.isPending) sendMessage.mutate(content);
+  };
+
+  const messages = chatQuery.data?.messages ?? [];
+  return (
+    <section className="candidate-section recruiter-chat-section">
+      <div className="candidate-section-head">
+        <div>
+          <p className="insights-eyebrow">Grounded in interview evidence</p>
+          <h2>Ask about {candidateName}</h2>
+        </div>
+        <StatusBadge tone="cool">Gemini score assistant</StatusBadge>
+      </div>
+
+      {chatQuery.isError ? (
+        <div className="insights-message insights-message-error" role="alert">
+          <strong>Chat history could not be loaded.</strong>
+          <span>{readableError(chatQuery.error)}</span>
+          <button className="nb-btn" onClick={() => void chatQuery.refetch()}>Retry</button>
+        </div>
+      ) : (
+        <div className="recruiter-chat-log" aria-live="polite" aria-busy={sendMessage.isPending}>
+          {chatQuery.isPending ? (
+            <p className="chat-status">Loading conversation...</p>
+          ) : messages.length === 0 ? (
+            <div className="chat-starters">
+              {starterQuestions.map((question) => (
+                <button
+                  key={question}
+                  type="button"
+                  onClick={() => setMessage(question)}
+                >
+                  {question}
+                </button>
+              ))}
+            </div>
+          ) : (
+            messages.map((item, index) => (
+              <article
+                className={`chat-message chat-message-${item.role}`}
+                key={`${item.created_at}-${item.role}-${index}`}
+              >
+                <strong>{item.role === "assistant" ? "Verdikt" : "You"}</strong>
+                {item.role === "assistant" ? (
+                  <div className="chat-markdown">
+                    <ReactMarkdown remarkPlugins={[remarkGfm]} skipHtml>
+                      {item.content}
+                    </ReactMarkdown>
+                  </div>
+                ) : (
+                  <p>{item.content}</p>
+                )}
+                {item.role === "assistant" && item.model_id && (
+                  <small>{item.model_id} - prompt {item.prompt_version}</small>
+                )}
+              </article>
+            ))
+          )}
+          {sendMessage.isPending && <p className="chat-status">Reviewing the evidence...</p>}
+        </div>
+      )}
+
+      {sendMessage.isError && (
+        <div className="insights-message insights-message-error" role="alert">
+          <strong>The score assistant could not answer.</strong>
+          <span>{readableError(sendMessage.error)}</span>
+        </div>
+      )}
+
+      <form className="recruiter-chat-form" onSubmit={submit}>
+        <textarea
+          aria-label="Question for the score assistant"
+          maxLength={2000}
+          onChange={(event) => setMessage(event.target.value)}
+          placeholder="Ask about a score, answer, claim, or review flag"
+          rows={3}
+          value={message}
+        />
+        <button
+          className="nb-btn nb-btn-primary"
+          disabled={!message.trim() || sendMessage.isPending || chatQuery.isError}
+          type="submit"
+        >
+          {sendMessage.isPending ? "Reviewing" : "Send"}
+        </button>
+      </form>
+    </section>
   );
 }
 

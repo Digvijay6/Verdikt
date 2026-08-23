@@ -12,7 +12,6 @@ import type {
   JobSummary,
   LeaderboardEntry,
 } from "../../components/insights/types";
-import "../../components/insights/insights.css";
 import { api } from "../../lib/api";
 
 type ReviewFilter = "all" | "review" | "clear";

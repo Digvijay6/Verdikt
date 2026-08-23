@@ -107,3 +107,17 @@ export type InterviewResult = {
   rubric_version: string;
   scored_at: string;
 };
+
+export type RecruiterChatMessage = {
+  role: "user" | "assistant";
+  content: string;
+  created_at: string;
+  model_id: string | null;
+  prompt_version: string | null;
+};
+
+export type RecruiterChatSession = {
+  session_id: string | null;
+  interview_id: string;
+  messages: RecruiterChatMessage[];
+};

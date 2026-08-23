@@ -84,6 +84,14 @@ job created -> requirements extracted from the JD by Gemini
   scored candidate detail with holistic strengths/concerns, review triggers,
   integrity evidence, per-question quotes/rationales, and model/prompt
   provenance. Null dimensions are shown as not applicable, never as zero.
+- Candidate detail now includes the persisted recruiter score assistant.
+  `GET/POST /insights/interviews/{interview_id}/chat` is recruiter- and
+  org-scoped; an ADK `LlmAgent` receives the full interview dossier in user
+  content and can inspect aggregate scores, question evidence, resume context,
+  and review signals through deterministic tools. Assistant turns persist
+  model/prompt provenance in `recruiter_chat_session.messages` (D5, D9, D11).
+  The candidate page renders assistant replies as sanitized GitHub-flavored
+  Markdown; recruiter messages remain literal text.
 - `shared/interview_scoring.py` — deterministic seniority weights, ownership
   cap, consistency penalties, must-have cap, review triggers
 - `interview_score` table plus rubric v2 aggregates (0-100 composite)
@@ -167,8 +175,8 @@ renumber yours — the merged one stays put.*
 | Consent screen copy per region, retention job | 1 |
 | Concurrency and monthly limits recorded but unenforced | 1 / 2 |
 | Browser proctor detectors — `frontend/src/lib/proctor/` empty | 2 |
-| `recruiter_chat` ADK agent, outreach | 3 |
-| Remaining prompt stubs: `interviewer-system`, `score-answer-live`, `score-holistic`, `recruiter-chat` | mixed |
+| Outreach drafting and sending | 3 |
+| Remaining prompt stubs: `interviewer-system`, `score-answer-live`, `score-holistic` | mixed |
 | **Nothing is deployed** — Google for Jobs needs a public URL, Resend needs a verified domain | shared |
 
 ## Before writing a query

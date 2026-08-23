@@ -19,6 +19,7 @@ import Signup from "./routes/auth/Signup";
 import CandidateDetailPage from "./routes/recruiter/CandidateDetailPage";
 import LeaderboardPage from "./routes/recruiter/LeaderboardPage";
 import "./app.css";
+import "./components/insights/insights.css";
 
 const queryClient = new QueryClient();
 

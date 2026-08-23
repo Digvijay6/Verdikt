@@ -1,6 +1,6 @@
 """Candidate evidence gathering.
 
-The asymmetry is the point (D34): a supported claim raises confidence, a
+The asymmetry is the point (D39): a supported claim raises confidence, a
 contradicted one lowers it, and finding nothing does neither. Most of these
 tests exist to make sure "nothing found" never becomes a negative signal,
 because that failure would be invisible — it looks like a reasonable score.

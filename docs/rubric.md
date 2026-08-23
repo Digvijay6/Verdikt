@@ -124,9 +124,9 @@ never causes automatic rejection.
 
 - During the call, `score-answer-live` provides a provisional correctness-only
   signal for adaptive follow-ups.
-- After the call, `score-answer.v2` produces per-answer measurements and
-  evidence. The deterministic aggregator creates the final composite and review
-  reasons. The post-call result replaces the live signal.
+- After the call, one `score-interview.v1` request produces measurements and
+  evidence for every answer. The deterministic aggregator creates the final
+  composite and review reasons. The post-call result replaces the live signal.
 - `score-holistic` may produce narrative strengths and concerns for recruiter
   explanation, but it does not alter the v2 composite.
 
@@ -156,7 +156,7 @@ it. This document is the aggregation that turns any set of anchored measurements
 into one comparable number. A job's rubric changing bumps `rubric_version`; this
 document changing bumps the scoring version and requires recalibration.
 
-Since D35 the questions differ between candidates while the anchors do not.
+Since D40 the questions differ between candidates while the anchors do not.
 Nothing here changes as a result — anchored measurement and deterministic
 aggregation both operate on `Question.dimensions`, which still arrive in the
 shape they always did. But calibration step 3 now has one more trigger worth

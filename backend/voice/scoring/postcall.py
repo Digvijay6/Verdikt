@@ -210,8 +210,6 @@ async def score_answer(
     return AnswerScore(
         question_id=question_id,
         dimensions=dimension_scores,
-        ownership_level=result.fixed_rubric.ownership_level,
-        consistency_label=result.fixed_rubric.consistency_label,
         weighted_score=result.weighted_score,
         followed_up=bool(followup_answers),
         followup_resilience_score=(

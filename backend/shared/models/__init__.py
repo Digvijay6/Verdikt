@@ -54,10 +54,12 @@ from .organization import (
 )
 from .scoring import (
     AnswerScore,
+    ConsistencyLabel,
     DimensionScore,
     HolisticScore,
     InterviewResult,
     LiveSignal,
+    OwnershipLevel,
     Recommendation,
 )
 
@@ -66,6 +68,7 @@ __all__ = [
     "Application",
     "ApplicationStatus",
     "Candidate",
+    "ConsistencyLabel",
     "DimensionScore",
     "Education",
     "EmploymentPeriod",
@@ -87,6 +90,7 @@ __all__ = [
     "Membership",
     "Organization",
     "OrganizationCreate",
+    "OwnershipLevel",
     "ParsedResume",
     "Plan",
     "ProfileSource",

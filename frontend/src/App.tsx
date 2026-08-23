@@ -6,6 +6,8 @@ import JobsPage from "./routes/intake/JobsPage";
 import ReviewQueue from "./routes/intake/ReviewQueue";
 import "./app.css";
 
+import { InterviewRoom } from "./routes/interview/InterviewRoom";
+
 const queryClient = new QueryClient();
 
 /**
@@ -35,7 +37,7 @@ export default function App() {
           <Route path="/candidates/*" element={<Placeholder name="Candidate detail" />} />
 
           {/* LANE 2 — public */}
-          <Route path="/interview/:token" element={<Placeholder name="Interview" />} />
+          <Route path="/interview/:token" element={<InterviewRoom />} />
         </Routes>
       </BrowserRouter>
     </QueryClientProvider>

@@ -1,0 +1,36 @@
+[project]
+name = "verdikt-agent"
+version = "0.1.0"
+description = "Provider-agnostic AI interview agent with per-turn analytics and scoring"
+requires-python = ">=3.11"
+dependencies = [
+    "livekit-agents[google,deepgram,cartesia,elevenlabs,openai]>=1.6.0",
+    "livekit-api>=1.0.0",
+    "livekit>=1.0.0",
+    "google-cloud-speech>=2.31.0",
+    "google-cloud-texttospeech>=2.18.0",
+    "google-adk>=0.5.0",
+    "google-genai>=1.0.0",
+    "pydantic>=2.0",
+    "pydantic-settings>=2.0",
+    "pyyaml>=6.0",
+    "httpx>=0.27",
+    "structlog>=24.0",
+]
+
+[project.scripts]
+verdikt-agent = "verdikt_agent.cli:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["verdikt_agent"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]

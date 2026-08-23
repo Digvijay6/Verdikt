@@ -5,28 +5,70 @@ will disagree within a week.
 
 ## Per answer
 
-Each answer is scored 1-5 on weighted dimensions defined by its question
-template. Weights are re-normalised at aggregation so a missing dimension never
-silently distorts the total.
+Each answer is scored 0-100 on these dimensions:
 
-    Q_i = Σ(w_k · d_ik) / Σ(w_k)
+- **Domain Technical Accuracy** — how correct and complete is the answer?
+- **Project / Answer Depth** — how specific vs. generic is the answer?
+- **Follow-up Resilience** — how well does the candidate hold up when drilled?
+  (only scored if a follow-up was asked)
+
+Plus two categorical labels per answer:
+
+- **Ownership Level** — `full_owner` / `major_contributor` / `minor_contributor`
+  / `unclear`. If `unclear`, cap `project_depth` at 49.
+- **Consistency Label** — `consistent` / `vague` / `unverifiable` / `inflated`.
+  Aggregated into `consistency_score` (see below).
 
 Scale anchors and the judge's rules are in `llm/prompts/score-answer.v1.md`.
 
 ## Overall
 
-    overall = 0.55 · mean(Q_i) + 0.30 · holistic + 0.15 · role_fit
+    overall = w1 · mean(domain_technical_accuracy)
+            + w2 · mean(project_depth)
+            + w3 · mean(followup_resilience)
+            + w4 · consistency_score
 
-Then, in order:
+Weights shift by seniority:
 
-1. **Hard gate** — any `must_have` question scoring ≤2 on correctness caps
-   `overall` at 2.5. Stops a strong communicator averaging out a fundamental
-   miss.
-2. **Integrity penalty** — multiplicative, not additive, so cheat flags cannot
-   be averaged away.
+| Dimension | Junior | Mid | Senior |
+|---|---|---|---|
+| Domain technical accuracy | 0.45 | 0.35 | 0.25 |
+| Project depth | 0.20 | 0.30 | 0.35 |
+| Follow-up resilience | 0.20 | 0.20 | 0.25 |
+| Consistency | 0.15 | 0.15 | 0.15 |
 
-Percentiles are within one job only. Never rank across jobs: different rubrics,
-different weights, sometimes different models.
+Junior candidates often lack deep project history, so raw technical knowledge
+carries more weight. Senior candidates are judged more on whether their claimed
+experience holds up under scrutiny.
+
+## Consistency score
+
+    consistency_score = max(0, 100 - sum(penalties across all answers))
+
+| Label | Penalty per instance |
+|---|---|
+| `consistent` | 0 |
+| `vague` | -5 |
+| `unverifiable` | -3 |
+| `inflated` | -15 |
+
+## Human review triggers
+
+Flag `needs_human_review = true` if any of these occur, even if the composite
+score is high:
+
+- Any `inflated` consistency label on a claim central to the role
+- `followup_resilience_score` below 40 on a resume-headline claim
+- `ownership_level = unclear` on the candidate's flagship project
+- Composite > 80 but built mostly from background questions, not
+  technical/project
+
+## Integrity penalty
+
+Multiplicative, not additive, so cheat flags cannot be averaged away.
+Applied after the composite and human-review checks.
+
+Percentiles are within one job only. Never rank across jobs.
 
 ## Hybrid timing
 
@@ -41,16 +83,14 @@ The post-call result overwrites the live signal.
 
 ## Calibration — TODO before any real candidate
 
-Scores are not portable across models or prompt versions. Same prompt, different
-model, different distribution.
+Scores are not portable across models or prompt versions. Same prompt,
+different model, different distribution.
 
-1. Hand-score 20-30 answers spanning the full 1-5 range.
+1. Hand-score 20-30 answers spanning the full 0-100 range.
 2. Re-run that set on every model or prompt change.
 3. If the distribution shifts, recalibrate or re-score affected candidates.
-4. Every score row already carries `model_id` and `prompt_version` — that is
-   what makes step 3 possible.
-
-Cheap to build now, impossible to retrofit.
+4. Every score row carries `model_id` and `prompt_version` — that is what
+   makes step 3 possible.
 
 ## Poison questions
 

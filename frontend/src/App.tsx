@@ -55,7 +55,7 @@ function Header() {
     <header className="mx-auto flex max-w-[72rem] flex-wrap items-center gap-4 px-5 pt-5 pb-1">
       <Link
         to="/jobs"
-        className="text-xl font-extrabold tracking-tight no-underline"
+        className="text-xl font-semibold tracking-tight no-underline"
       >
         Verdikt
       </Link>

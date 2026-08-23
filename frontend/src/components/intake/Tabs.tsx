@@ -75,19 +75,25 @@ export function Tabs({
               onClick={() => onChange(tab.id)}
               className="nb-tab"
             >
+              {/* Sits above the strip's background but below the label. It
+                  used to be -z-10, which put it behind the tab's own fill and
+                  made the active tab render white instead of lime. */}
               {isActive && (
                 <motion.span
+                  aria-hidden
                   layoutId="tab-underlay"
-                  className="absolute inset-0 -z-10 rounded-t-[0.9rem] bg-lime"
+                  className="absolute inset-0 rounded-t-[0.9rem] bg-panel"
                   transition={{ type: "spring", stiffness: 420, damping: 34 }}
                 />
               )}
-              {tab.label}
-              {tab.badge !== undefined && (
-                <span className="ml-2 rounded-full border-2 border-ink bg-panel px-1.5 text-xs font-bold">
-                  {tab.badge}
-                </span>
-              )}
+              <span className="relative">
+                {tab.label}
+                {tab.badge !== undefined && (
+                  <span className="ml-2 rounded-full bg-lime px-2 py-0.5 text-xs font-semibold">
+                    {tab.badge}
+                  </span>
+                )}
+              </span>
             </button>
           );
         })}

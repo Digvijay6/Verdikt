@@ -67,14 +67,14 @@ export function RubricViewer({ rubric }: { rubric: Rubric }) {
           return (
             <li
               key={c.key}
-              className="overflow-hidden rounded-[1.25rem] border-2 border-ink bg-panel"
+              className="overflow-hidden rounded-[1.25rem] border border-line bg-panel"
             >
               <button
                 onClick={() => setOpen(isOpen ? null : c.key)}
                 aria-expanded={isOpen}
                 className="flex w-full flex-wrap items-center gap-2 border-none bg-transparent p-3.5 text-left"
               >
-                <span className="font-extrabold">{c.name}</span>
+                <span className="font-semibold">{c.name}</span>
                 {c.must_have && <Pill tone="attention">must-have</Pill>}
                 <Pill tone={c.kind === "technical" ? "good" : "cool"}>
                   {c.kind}
@@ -90,7 +90,7 @@ export function RubricViewer({ rubric }: { rubric: Rubric }) {
               {/* The competency key, shown deliberately: it is what each
                   generated question is tagged with, so it is the join between
                   a candidate's question and the anchors it was scored on. */}
-              <div className="border-t-2 border-ink/10 px-3.5 pb-2 text-xs">
+              <div className="px-3.5 pb-2 text-xs">
                 <code className="font-mono text-muted">{c.key}</code>
                 <p className="hint mt-1 mb-2">{c.why}</p>
               </div>
@@ -99,7 +99,7 @@ export function RubricViewer({ rubric }: { rubric: Rubric }) {
                 <motion.div
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
-                  className="border-t-2 border-ink bg-paper p-3.5"
+                  className="border-t border-line bg-paper p-3.5"
                 >
                   {c.dimensions.map((d) => (
                     <div key={d.key} className="mb-4 last:mb-0">
@@ -111,7 +111,7 @@ export function RubricViewer({ rubric }: { rubric: Rubric }) {
                         {[1, 2, 3, 4, 5].map((level) => (
                           <li
                             key={level}
-                            className="flex gap-2.5 rounded-lg border-2 border-ink bg-panel px-2.5 py-1.5 text-sm"
+                            className="flex gap-2.5 rounded-xl border border-line bg-panel px-2.5 py-1.5 text-sm"
                           >
                             <b
                               className="shrink-0 tabular-nums"

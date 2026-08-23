@@ -41,10 +41,10 @@ export function StatTile({
 
   return (
     <div className={`nb-tile ${fill}`}>
-      <b className="block text-2xl leading-tight font-extrabold tabular-nums">
+      <b className="block text-2xl leading-tight font-semibold tabular-nums">
         {value}
       </b>
-      <span className="text-xs font-semibold text-ink/70">{label}</span>
+      <span className="text-xs font-medium text-muted">{label}</span>
     </div>
   );
 }
@@ -64,9 +64,12 @@ export function Pill({
     attention: "bg-danger",
   }[tone];
 
+  // Plain pills get a hairline so they read as a chip on white; filled ones
+  // do not need it — the fill already separates them.
+  const edge = tone === "plain" ? "border border-line" : "";
   return (
     <span
-      className={`inline-block rounded-full border-2 border-ink px-2.5 py-0.5 text-xs font-bold ${fill}`}
+      className={`inline-block rounded-full px-2.5 py-0.5 text-xs font-semibold ${edge} ${fill}`}
     >
       {children}
     </span>
@@ -84,7 +87,7 @@ export function InkPanel({
 }) {
   return (
     <section
-      className={`rounded-card border-2 border-ink bg-ink p-5 text-paper shadow-[var(--shadow-hard)] ${className}`}
+      className={`rounded-card bg-ink p-5 text-paper shadow-[var(--shadow-card)] ${className}`}
     >
       {children}
     </section>

@@ -98,7 +98,7 @@ export default function ApplicationForm() {
           <label>
             Résumé <span className="hint">PDF, up to 10MB</span>
             <input
-              className="nb-input file:mr-3 file:rounded-full file:border-2 file:border-ink file:bg-lavender file:px-3 file:py-1 file:font-semibold"
+              className="nb-input file:mr-3 file:rounded-full file:border-0 file:bg-lavender file:px-3 file:py-1 file:font-semibold"
               name="resume"
               type="file"
               accept="application/pdf"
@@ -107,7 +107,7 @@ export default function ApplicationForm() {
           </label>
 
           {/* Wording matters here - this is the disclosure, not a formality. */}
-          <label className="flex items-start gap-2.5 rounded-xl border-2 border-ink bg-paper p-3 text-sm font-normal">
+          <label className="flex items-start gap-2.5 rounded-xl border border-line bg-paper p-3 text-sm font-normal">
             <input
               name="consent"
               type="checkbox"

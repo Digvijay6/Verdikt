@@ -37,8 +37,8 @@ export function MagicNav({ items }: { items: NavItem[] }) {
             {isActive && (
               <motion.span
                 layoutId="nav-pill"
-                className="absolute inset-0 -z-10 rounded-full border-2 border-ink bg-lime"
-                style={{ boxShadow: "var(--shadow-hard-sm)" }}
+                className="absolute inset-0 -z-10 rounded-full bg-lime"
+                style={{ boxShadow: "var(--shadow-tile)" }}
                 transition={{ type: "spring", stiffness: 420, damping: 34 }}
               />
             )}

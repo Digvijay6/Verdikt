@@ -245,7 +245,7 @@ function JobCard({ job, onRebuild }: { job: Job; onRebuild: () => void }) {
   return (
     <article>
       <div className="mb-3 flex flex-wrap items-center gap-2.5 px-1">
-        <strong className="text-lg font-extrabold">{job.title}</strong>
+        <strong className="text-lg font-semibold">{job.title}</strong>
         <Pill>{job.seniority}</Pill>
         <Pill tone={statusTone}>
           {building ? "building rubric..." : job.question_bank_status}

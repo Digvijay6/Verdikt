@@ -136,7 +136,7 @@ export default function ReviewQueue() {
         {data?.map((app) => (
           <Card key={app.id}>
             <header className="mb-3 flex flex-wrap items-center gap-2.5">
-              <strong className="text-lg font-extrabold">
+              <strong className="text-lg font-semibold">
                 {app.parsed_resume?.full_name ?? "Unnamed candidate"}
               </strong>
               <span className="hint">{app.parsed_resume?.email}</span>
@@ -263,7 +263,7 @@ function CandidateQuestions({ app }: { app: Application }) {
         {app.questions.map((q) => (
           <li
             key={q.id}
-            className="rounded-xl border-2 border-ink bg-paper px-3 py-2"
+            className="nb-row bg-paper"
           >
             <div className="mb-1 flex flex-wrap items-center gap-2">
               <b className="tabular-nums">{q.order}</b>

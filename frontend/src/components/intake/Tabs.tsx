@@ -56,9 +56,10 @@ export function Tabs({
       <div
         ref={strip}
         role="tablist"
-        className="nb-tabstrip"
+        className="folder-strip"
         onKeyDown={onKeyDown}
       >
+        <span className="folder-strip-shape" aria-hidden />
         {tabs.map((tab) => {
           const isActive = tab.id === active;
           return (
@@ -73,7 +74,7 @@ export function Tabs({
               // costing ten tab presses to walk past.
               tabIndex={isActive ? 0 : -1}
               onClick={() => onChange(tab.id)}
-              className="nb-tab"
+              className="folder-tab"
             >
               {/* Carries the active tab's outline and fill, and extends 1.5px
                   past its own bottom so it paints over the panel's top border.
@@ -95,7 +96,7 @@ export function Tabs({
                   transition={{ type: "spring", stiffness: 420, damping: 34 }}
                 />
               )}
-              <span className="relative">
+              <span className="folder-label">
                 {tab.label}
                 {tab.badge !== undefined && (
                   <span className="ml-2 rounded-full bg-lime px-2 py-0.5 text-xs font-semibold">

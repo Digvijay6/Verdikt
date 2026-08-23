@@ -229,19 +229,15 @@
 
   /* --- the app shell ---------------------------------------------------- */
 
-  /* The whole product is one sheet, and the nav sits on its top edge like tabs
-     on a folder. The active item breaks through that edge and fuses with the
-     sheet; the inactive ones stay flat on the layer behind. That is what makes
-     the current section read as *part of* the page rather than a link above it.
-
-     The strip and the sheet overlap by exactly one hairline: the strip pulls
-     down, and the active tab paints over the segment of the sheet's border
-     that runs beneath it. */
+  /* The whole product is one sheet, and the nav is a set of folder tabs on its
+     top edge. Inactive tabs sit together on a back sheet; the active one is a
+     trapezoid in the *page's* colour that rises above that back sheet and
+     fuses with the page below. Same colour plus no dividing line is what makes
+     it read as the sheet you have pulled forward rather than a link. */
   .app-nav {
     display: flex;
     flex-wrap: wrap;
     align-items: flex-end;
-    gap: 0.9rem;
     max-width: 72rem;
     margin: 1.4rem auto calc(-1 * var(--edge-w));
     padding: 0 2.1rem;
@@ -249,10 +245,16 @@
     z-index: 1;
   }
 
-  /* Signed out, the header renders nothing and the sheet is the first element
-     on the page, so it has to supply its own top gap. Kept off the default
-     because a top margin here would collapse against the strip's negative one
-     and undo the single-hairline overlap the tab depends on. */
+  /* Sign out and the org name are not part of the folder, so they keep clear
+     of its top edge instead of sitting on it. */
+  .app-nav-aside {
+    display: flex;
+    align-items: center;
+    gap: 0.9rem;
+    margin-left: auto;
+    margin-bottom: 1.15rem;
+  }
+
   .app-page:first-child {
     margin-top: 1.4rem;
   }
@@ -280,56 +282,105 @@
     margin: 0 auto;
   }
 
-  /* One nav item. The active one is a tab; the rest are plain text, because
-     giving them chrome too would flatten the front-to-back distinction that
-     the whole shape depends on. */
-  .app-navitem {
+  /* --- retro folder tabs ------------------------------------------------ */
+
+  /* The back sheet the inactive tabs live on: vertical down the left, slanted
+     away on the right, in the page background rather than the sheet white so
+     it reads as the layer behind. */
+  .folder-strip {
+    --nav-rise: 0.55rem;
+    --slant: 0.85rem;
     position: relative;
-    padding: 0.5rem 1.15rem 0.7rem;
+    display: flex;
+    align-items: flex-end;
+    padding: var(--nav-rise) 0 0 1.1rem;
+    margin-bottom: calc(-1 * var(--edge-w));
+  }
+
+  .folder-strip-shape {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 0;
+    bottom: calc(-1 * var(--edge-w));
+    background: var(--color-paper);
+    border: var(--edge-w) solid var(--color-edge);
+    border-bottom: none;
+    border-right: none;
+    border-radius: 0.45rem 0 0 0;
+  }
+  /* The slant. Skewed from the bottom so the base stays put and only the top
+     edge travels, which is what makes it lean rather than shear. */
+  .folder-strip-shape::after {
+    content: "";
+    position: absolute;
+    left: 100%;
+    top: calc(-1 * var(--edge-w));
+    bottom: 0;
+    width: 1.5rem;
+    background: inherit;
+    border-top: var(--edge-w) solid var(--color-edge);
+    border-right: var(--edge-w) solid var(--color-edge);
+    transform: skewX(20deg);
+    transform-origin: bottom;
+  }
+
+  .folder-tab {
+    position: relative;
+    padding: 0.45rem 1.5rem 0.62rem;
+    font: inherit;
     font-weight: 600;
     font-size: 0.95rem;
     color: var(--color-muted);
+    background: none;
+    border: none;
     text-decoration: none;
-    border-radius: var(--radius-btn) var(--radius-btn) 0 0;
-  }
-  .app-navitem[aria-current="page"] {
-    color: var(--color-ink);
-  }
-
-  /* --- the folder-tab seam ---------------------------------------------- */
-
-  /* The active tab fuses into the panel below it: it shares the panel's
-     background and sits 1px lower so no seam shows between them. That
-     continuity is the whole effect — without it the tabs read as buttons
-     floating above a box. */
-  .nb-tabstrip {
-    display: flex;
-    gap: 0.3rem;
-    padding: 0 0.75rem;
-    position: relative;
-    z-index: 1;
-  }
-  .nb-tab {
-    position: relative;
-    font: inherit;
-    font-weight: 600;
-    padding: 0.5rem 1.15rem 0.65rem;
-    border: var(--edge-w) solid var(--color-edge);
-    border-bottom: none;
-    border-radius: 0.8rem 0.8rem 0 0;
-    /* Recessed: an inactive tab is the sheet *behind* the active one, so it
-       takes the page colour rather than the panel's white. */
-    background: var(--color-paper);
-    color: var(--color-muted);
     cursor: pointer;
-    margin-bottom: calc(-1 * var(--edge-w));
   }
-  .nb-tab[aria-selected="true"] {
+  .folder-tab[aria-current="page"],
+  .folder-tab[aria-selected="true"] {
     color: var(--color-ink);
-    /* The underlay element paints this tab's outline and fill instead, so the
-       button's own edge would double up along the same line. */
-    border-color: transparent;
   }
+  /* The label rides above the shape; the shape is painted behind it. */
+  .folder-tab > .folder-label {
+    position: relative;
+  }
+
+  /* The active tab. Three pieces: a straight middle plus two skewed ends, so
+     the slanted edges carry a real 1px border. clip-path cannot do this - it
+     cuts the border off with the shape. */
+  .folder-shape {
+    position: absolute;
+    left: var(--slant);
+    right: var(--slant);
+    top: calc(-1 * var(--nav-rise));
+    bottom: calc(-1 * var(--edge-w));
+    background: var(--color-panel);
+    border-top: var(--edge-w) solid var(--color-edge);
+  }
+  .folder-shape::before,
+  .folder-shape::after {
+    content: "";
+    position: absolute;
+    top: calc(-1 * var(--edge-w));
+    bottom: 0;
+    width: var(--slant);
+    background: inherit;
+    border-top: var(--edge-w) solid var(--color-edge);
+  }
+  .folder-shape::before {
+    right: 100%;
+    transform: skewX(-20deg);
+    transform-origin: bottom;
+    border-left: var(--edge-w) solid var(--color-edge);
+  }
+  .folder-shape::after {
+    left: 100%;
+    transform: skewX(20deg);
+    transform-origin: bottom;
+    border-right: var(--edge-w) solid var(--color-edge);
+  }
+
   .nb-tabpanel {
     border: var(--edge-w) solid var(--color-edge);
     border-radius: 0 var(--radius-card) var(--radius-card) var(--radius-card);

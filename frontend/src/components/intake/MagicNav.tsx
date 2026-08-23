@@ -21,7 +21,13 @@ import { NavLink, useLocation } from "react-router-dom";
 
 export type NavItem = { to: string; label: string };
 
-export function MagicNav({ items }: { items: NavItem[] }) {
+export function MagicNav({
+  items,
+  children,
+}: {
+  items: NavItem[];
+  children?: React.ReactNode;
+}) {
   const { pathname } = useLocation();
 
   // Longest matching prefix, so /applications/abc still lights "Candidates"
@@ -30,8 +36,14 @@ export function MagicNav({ items }: { items: NavItem[] }) {
     .filter((i) => pathname === i.to || pathname.startsWith(i.to + "/"))
     .sort((a, b) => b.to.length - a.to.length)[0];
 
+  // The strip *is* the nav element. Rendering a wrapper with `display:
+  // contents` so the tabs could join the strip's flex layout would work
+  // visually, but that has historically dropped the nav landmark out of the
+  // accessibility tree — not worth risking for a layout convenience.
   return (
-    <nav className="flex items-end" aria-label="Main">
+    <nav className="folder-strip" aria-label="Main">
+      <span className="folder-strip-shape" aria-hidden />
+      {children}
       {items.map((item) => {
         const isActive = item === active;
         return (
@@ -39,7 +51,7 @@ export function MagicNav({ items }: { items: NavItem[] }) {
             key={item.to}
             to={item.to}
             aria-current={isActive ? "page" : undefined}
-            className="app-navitem"
+            className="folder-tab"
           >
             {/* Carries the tab's fill and outline, and extends one hairline
                 past its own bottom to paint over the sheet's top border. That
@@ -48,17 +60,11 @@ export function MagicNav({ items }: { items: NavItem[] }) {
               <motion.span
                 aria-hidden
                 layoutId="nav-tab"
-                className="absolute inset-x-0 top-0 bg-lime"
-                style={{
-                  bottom: "calc(-1 * var(--edge-w))",
-                  border: "var(--edge-w) solid var(--color-edge)",
-                  borderBottom: "none",
-                  borderRadius: "var(--radius-btn) var(--radius-btn) 0 0",
-                }}
+                className="folder-shape"
                 transition={{ type: "spring", stiffness: 420, damping: 34 }}
               />
             )}
-            <span className="relative">{item.label}</span>
+            <span className="folder-label">{item.label}</span>
           </NavLink>
         );
       })}

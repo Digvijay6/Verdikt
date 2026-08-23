@@ -53,19 +53,23 @@ function Header() {
   if (!session) return null;
   return (
     <header className="app-nav">
-      <Link
-        to="/jobs"
-        className="pb-1.5 text-xl font-semibold tracking-tight no-underline"
-      >
-        Verdikt
-      </Link>
+      {/* Brand and inactive tabs share one back sheet; the active tab rises out
+          of it and fuses with the page. */}
+      <MagicNav items={NAV}>
+        <Link
+          to="/jobs"
+          className="folder-label pr-3 pb-1 text-xl font-semibold tracking-tight no-underline"
+        >
+          Verdikt
+        </Link>
+      </MagicNav>
 
-      <MagicNav items={NAV} />
-
-      <span className="hint ml-auto pb-2">{org?.name}</span>
-      <button className="nb-btn mb-1.5" onClick={() => void signOut()}>
-        Sign out
-      </button>
+      <div className="app-nav-aside">
+        <span className="hint">{org?.name}</span>
+        <button className="nb-btn" onClick={() => void signOut()}>
+          Sign out
+        </button>
+      </div>
     </header>
   );
 }

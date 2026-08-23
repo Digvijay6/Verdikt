@@ -494,7 +494,94 @@ their rubric/model/prompt provenance.
 v2 composite and never causes automatic rejection. This supersedes the earlier
 unimplemented note about a multiplicative integrity penalty.
 
-## D33 · Google for Jobs, not LinkedIn
+## D33 · Snapshot each question's scoring request and response
+
+**Chosen:** `question_instance` stores the exact structured `scoring_input`
+sent to Gemini and the validated `fixed_rubric` response as JSONB.
+
+**Rejected:** reconstructing model input later from the current job bank,
+transcript, and parsed resume.
+
+**Why:** those source records can be corrected or versioned after an interview.
+Reconstruction would then produce a plausible payload that is not necessarily
+what the model actually saw. Immutable request/response snapshots make a score
+reproducible and reviewable without fully normalising the explanation tree.
+
+## D34 · Normalize Gemini scoring input
+
+**Chosen:** scalar question context lives on `question_instance`; ordered resume
+and prior-answer claims live in `question_scoring_claim`; ordered transcript
+turns live in `question_conversation_turn`. Gemini user content is assembled
+from those rows at call time. The `fixed_rubric` response remains JSONB.
+
+**Rejected:** continuing to write the whole scoring request into
+`question_instance.scoring_input` JSONB, and putting repeated claims or
+conversation turns into arrays on the parent row.
+
+**Why:** the request structure is stable operational data that needs ordinary
+constraints, ordering, joins, and reviewer queries. Claims and transcript turns
+are one-to-many records, so child tables express them without duplicated parent
+rows. `fixed_rubric` is different: it is a versioned model-response snapshot
+with optional dimensions and nested evidence, while deterministic queryable
+aggregates already live in `interview_score`.
+
+**Compatibility:** D34 supersedes D33 for request persistence. The previously
+applied `scoring_input` column remains deprecated because migrations are
+additive-only; the post-call pipeline populates the normalized tables directly,
+and new code does not read or write the legacy column.
+
+## D35 · Normalize per-question rubric assessments
+
+**Chosen:** validated Gemini measurements are persisted one-to-one in
+`question_rubric_assessment`, with typed score, label, quote, rationale, and
+provenance columns. `FixedRubricAssessment` remains the in-memory Pydantic
+response schema used to validate Gemini before insertion.
+
+**Rejected:** continuing to write `question_instance.fixed_rubric` JSONB.
+
+**Why:** the fixed v2 rubric is stable core product data. Recruiter explanation,
+calibration, and score audits need ordinary constraints and direct queries over
+individual measurements and evidence. Nested JSON remains appropriate at the
+LLM boundary, but not as the canonical database representation.
+
+**Compatibility:** D35 supersedes D34 for response persistence. New code does
+not read or write either legacy JSONB column. Physical column removal is handled
+outside these additive migrations after every environment has moved to the
+normalized schema.
+
+## D36 · Bounded parallel post-call answer scoring
+
+**Chosen:** score completed questions concurrently with a default limit of four
+Gemini calls. Preserve question order and persist only after the whole batch
+succeeds.
+
+**Rejected:** sequential per-question calls, which make post-call latency grow
+linearly, and unbounded fan-out, which turns longer interviews into avoidable
+quota spikes.
+
+**Why:** question assessments are independent, but Gemini capacity is not.
+Bounded concurrency captures most of the latency win while keeping retries and
+rate limits tractable. Registry provenance and factual context flags are
+attached by application code, not copied from model claims.
+
+## D37 · One post-call scoring prompt per interview
+
+**Chosen:** send all completed question packages in one `score-interview` call,
+validate that every expected question id appears exactly once, then persist and
+aggregate the complete response.
+
+**Rejected:** D36's parallel per-question calls.
+
+**Why:** the product owner prefers one auditable model invocation per interview,
+lower request count, and direct cross-answer consistency context. The prompt
+explicitly requires independent per-question scoring to limit halo effects.
+One malformed response fails the interview scoring run without publishing a
+partial leaderboard result; rerunning by job id is idempotent.
+
+**Compatibility:** D37 supersedes D36. This is a new registry task and prompt
+version, so its scores must be calibrated separately from `score-answer.v2`.
+
+## D31 · Google for Jobs, not LinkedIn
 
 **Chosen:** publish `JobPosting` JSON-LD on a server-rendered public page at
 `/j/{job_id}`, discovered through `sitemap.xml`. Free, sanctioned, no gatekeeper.

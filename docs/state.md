@@ -37,7 +37,7 @@ git push                          # your branch, never main
 - **Resend key live**, sandbox mode: delivers only to the account owner's
   address until a domain is verified
 - **LiveKit credentials verified** (`ListRooms` 200)
-- **All five migrations applied.** Teammates now have dashboard access and can
+- **All six migrations applied.** Teammates now have dashboard access and can
   run their own
 - `docker compose up` boots api (:8000) and frontend (:5173) in ~3s
 
@@ -82,12 +82,27 @@ job created -> requirements extracted from the JD by Gemini
   cap, consistency penalties, must-have cap, review triggers
 - `interview_score` table plus rubric v2 aggregates (0-100 composite)
 - `llm/prompts/score-answer.v2.md`, registry task bumped to v2
+- `backend/scripts/seed_scoring_examples.py` prepares 40 normalized per-question
+  Gemini inputs and relational rubric assessments for ten demo candidates
+- `shared/post_call_scoring.py` sends one complete interview to
+  `score-interview.v1`, validates question coverage/order, and attaches trusted
+  context/provenance (D37)
+- `scripts/score_job_interviews.py --job-id ...` scores completed, unscored
+  interviews for one job and persists inputs, assessments, and aggregates
+- Legacy `question_instance.scoring_input` and `fixed_rubric` JSONB are no
+  longer read or written by the scoring seed
+- `20260823110000_lane2_normalize_question_scoring_input.sql` is ready to push;
+  it adds scalar question fields plus ordered claim and conversation tables
+- `20260823111000_lane2_normalize_question_rubric_assessment.sql` is ready to
+  push; it adds typed per-question measurements, evidence, and provenance (D35)
 
 ## Lane 2 — in flight on `ai-call`
 
 Voice state machine, scoring pipeline, proctor, agent worker, redeem endpoint,
 room metadata, silero VAD. Eight commits unmerged. They have added
 `livekit-plugins-silero` and `structlog` to the `[voice]` extra.
+Its interview-completed hook still needs to invoke the shared one-prompt scorer;
+the job-id command is the executable integration path meanwhile.
 
 **One change waiting for them.** Their redeem assembles the `InterviewPackage`
 itself — fetching the application, validating `job.question_bank` into

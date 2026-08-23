@@ -17,7 +17,6 @@
       "model": "gemini-3.1-pro-preview",
       "version": "v1"
     },
-
     "question-builder": {
       "competency-extractor": {
         "prompt": "qb/competency-extractor.v1.md",
@@ -55,7 +54,6 @@
         "version": "v1"
       }
     },
-
     "interviewer-system": {
       "prompt": "interviewer-system.v1.md",
       "model": "gemini-2.5-flash-native-audio-preview-12-2025",
@@ -79,6 +77,16 @@
     "recruiter-chat": {
       "prompt": "recruiter-chat.v1.md",
       "model": "gemini-3.1-pro-preview",
+      "version": "v1"
+    },
+    "candidate-evidence": {
+      "prompt": "candidate-evidence.v1.md",
+      "model": "gemini-3.7-flash",
+      "version": "v1"
+    },
+    "candidate-evidence-format": {
+      "prompt": "candidate-evidence-format.v1.md",
+      "model": "gemini-3.7-flash",
       "version": "v1"
     }
   }

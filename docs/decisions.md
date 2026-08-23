@@ -551,6 +551,88 @@ liability plus a ban risk aimed at customers.
 
 ---
 
+## D32 · Verify claims from links candidates give us; never source strangers
+
+**Chosen:** an ADK agent that checks a candidate's claims against the GitHub
+profile **they put on their own application**. Verification, not sourcing.
+
+**Rejected: crawling GitHub to find candidates.** GitHub's Acceptable Use
+Policy, section 7, closes the API loophole explicitly:
+
+> "You may not use information from the Service (whether scraped, **collected
+> through our API**, or obtained otherwise) for spamming purposes, including for
+> the purposes of sending unsolicited emails to users or selling personal
+> information, **such as to recruiters, headhunters, and job boards**."
+
+That is this product's exact use case. Using their API is the same violation as
+scraping — they wrote the clause to cover both.
+
+**Also rejected: fetching LinkedIn to verify employment.** Same wall as D31.
+Their User Agreement prohibits automated access, and the candidate consenting to
+*us* does not waive terms *they* agreed to.
+
+**GDPR, separately:** building profiles from crawled data is processing personal
+data. Article 14 requires notifying each person within a month, and it applies
+to public data. Links a candidate hands you on an application are a different
+basis entirely.
+
+## The asymmetry, which is the whole design
+
+| Finding | Effect |
+|---|---|
+| Claim supported by real evidence | raises confidence |
+| Claim actively contradicted | lowers it |
+| **Nothing found either way** | **changes nothing** |
+
+Absence of public evidence is not evidence of absence. Most professional work
+lives in private company repositories, so penalising an empty GitHub punishes
+people for where their best work happens to sit — usually behind an employer's
+firewall.
+
+The same logic is why LinkedIn verification would have been unfair even if it
+were permitted: penalising an unverifiable employment claim hits people with no
+LinkedIn, private profiles, stale profiles, or from regions where it is not
+dominant.
+
+`contradicted` is a deliberately high bar. "Every Go repository is a forked
+tutorial with two commits" is a contradiction. "Claims Kubernetes, no Kubernetes
+repositories" is `not_found`. When unsure it is `not_found`, because a wrong
+`contradicted` costs someone an interview over a repository they never
+mentioned.
+
+**Failures map to `not_found` too.** A rate limit, a renamed account, an
+outage — the tools say so explicitly in their output, so the model cannot infer
+a negative from a technical problem.
+
+## Why this is the right ADK use
+
+`question_builder` (D9) is a fixed pipeline: the trajectory never varies, only
+the content does. Evidence gathering is genuinely agentic — each finding decides
+the next call. A repo whose name matches a claimed technology is worth opening;
+a two-commit fork is not. That is what tools and a model-driven trajectory are
+for.
+
+**Implementation notes**
+- Budget of 12 tool calls, enforced in the tools themselves via session state.
+  Hitting it is normal completion, not failure.
+- ADK cannot combine `output_schema` with tools, so the agent explores freely
+  and a second typed call structures its notes. Gemini's `response_schema`
+  guarantees the shape rather than hoping for well-formed JSON.
+- `httpx`, not `urllib`: urllib uses the OS trust store, which is absent on some
+  Python installs and fails every HTTPS call. That looked exactly like a
+  candidate having no GitHub profile.
+- Evidence is passed to the screen as **context to reason about**, never as a
+  score adjustment, so the recruiter sees the same findings and can trace a
+  decision to the repository behind it.
+- `GITHUB_TOKEN` is optional but wanted: unauthenticated is 60 requests/hour,
+  which one candidate can exhaust.
+
+**Proved itself on the first real run.** The screen had earlier rejected a
+candidate partly for "Python absent from the resume". The agent found a 106 KB
+FastAPI-and-PostgreSQL repository under a link that candidate had supplied.
+
+---
+
 ---
 
 ## Provenance of the original plan

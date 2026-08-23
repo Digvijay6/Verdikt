@@ -13,7 +13,7 @@ import logging
 
 from shared.models.candidate import ApplicationStatus, ScreeningOutcome
 
-from . import hard_checks, invites, parsing, repo, screening
+from . import evidence, hard_checks, invites, parsing, repo, screening
 
 log = logging.getLogger(__name__)
 
@@ -79,8 +79,20 @@ def _process(application_id: str, org_id: str) -> None:
         repo.set_status(application_id, org_id, ApplicationStatus.REJECTED_SCREEN)
         return
 
-    # 3. LLM screen --------------------------------------------------------
-    decision, provenance = screening.screen_application(resume, job)
+    # 3. Evidence ----------------------------------------------------------
+    # Only runs when the candidate supplied a GitHub link on their own
+    # application. Returns None on anything going wrong, because verification
+    # is an enhancement to screening and must never block it.
+    found = evidence.gather(resume, job.jd_text)
+    if found:
+        log.info(
+            "evidence for application %s: %d findings",
+            application_id,
+            len(found.findings),
+        )
+
+    # 4. LLM screen --------------------------------------------------------
+    decision, provenance = screening.screen_application(resume, job, evidence=found)
 
     next_status = {
         ScreeningOutcome.ACCEPT: ApplicationStatus.SCREENING,
@@ -97,7 +109,7 @@ def _process(application_id: str, org_id: str) -> None:
         provenance.prompt_version,
     )
 
-    # 4. Act ---------------------------------------------------------------
+    # 5. Act ---------------------------------------------------------------
     if decision.outcome is ScreeningOutcome.ACCEPT:
         send_invite(application_id, org_id)
     # REJECT: recorded, no email. A human reviews before anything reaches the

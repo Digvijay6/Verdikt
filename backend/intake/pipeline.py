@@ -156,6 +156,7 @@ def _ensure_questions(application: Application, job: Job, org_id: str) -> None:
             generated,
             provenance.model_id,
             provenance.prompt_version,
+            job.rubric_version,
         )
         log.info(
             "generated %d questions for application %s", len(generated), application.id

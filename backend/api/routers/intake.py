@@ -241,8 +241,10 @@ def rebuild_questions(
     interpretable; new ones are not comparable to them.
 
     Candidates invited before the rebuild keep their existing questions, which
-    were written against the old anchors. That is the reason the version bump
-    matters rather than being bookkeeping.
+    were written against the old anchors — and keep that old version too, via
+    `application.questions_rubric_version`. The package reports theirs, not the
+    job's current one, so an interview is never stamped with a version whose
+    anchors it was not scored against.
     """
     if repo.get_job(job_id, recruiter.org_id) is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "No such job")

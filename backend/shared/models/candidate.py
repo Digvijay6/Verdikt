@@ -152,6 +152,11 @@ class Application(BaseModel):
     questions: list[Question] | None = None
     questions_model_id: str | None = None
     questions_prompt_version: str | None = None
+    # The rubric version these questions were written against. Not the job's
+    # current one: the questions carry a frozen copy of that version's anchors,
+    # and a rebuild between invite and redeem would otherwise stamp the
+    # interview with a version it was never scored against.
+    questions_rubric_version: str | None = None
     questions_error: str | None = None
 
     consent_given_at: datetime

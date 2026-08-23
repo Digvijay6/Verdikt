@@ -321,6 +321,7 @@ def create_application(
                 "questions": None,
                 "questions_model_id": None,
                 "questions_prompt_version": None,
+                "questions_rubric_version": None,
                 "questions_error": None,
                 "decided_by": None,
                 "decided_at": None,
@@ -458,17 +459,23 @@ def save_questions(
     questions: list[Question],
     model_id: str,
     prompt_version: str,
+    rubric_version: str,
 ) -> None:
     """This candidate's probes, with the provenance that produced them.
 
     Same statement, same reason as the screening decision: a question set whose
     model and prompt are unknown cannot be compared to any other.
+
+    `rubric_version` is stored here rather than read from the job at redeem
+    because these questions carry a frozen copy of that version's anchors. A
+    rebuild between invite and redeem moves the job's version but not theirs.
     """
     db().table("application").update(
         {
             "questions": [q.model_dump(mode="json") for q in questions],
             "questions_model_id": model_id,
             "questions_prompt_version": prompt_version,
+            "questions_rubric_version": rubric_version,
             "questions_error": None,
         }
     ).eq("id", application_id).eq("org_id", org_id).execute()

@@ -72,6 +72,26 @@ def _questions_for(application, job) -> list[Question]:
     )
 
 
+def _rubric_version_for(application, job) -> str:
+    """The version whose anchors are actually on these questions.
+
+    Not `job.rubric_version`. That one is live and moves when a recruiter
+    rebuilds; `application.questions` carry a frozen copy of the anchors from
+    whichever version was in force at invite time. Invites last 7 days and
+    editing a JD rebuilds by default, so the two genuinely diverge.
+
+    Sending the live value would stamp an interview v2 while it was scored
+    against v1 anchors, and lane 3 would then rank it against real v2 interviews
+    as if calibrated — the exact thing this field exists to prevent.
+
+    Falls back to the job's value for applications invited before this was
+    recorded, and for jobs still on the pre-rubric question bank.
+    """
+    if application.questions and application.questions_rubric_version:
+        return application.questions_rubric_version
+    return job.rubric_version
+
+
 def build_interview_package(
     application_id: str, org_id: str, interview_id: str
 ) -> InterviewPackage:
@@ -98,6 +118,6 @@ def build_interview_package(
         questions=_questions_for(application, job),
         resume_summary=resume_summary(application.parsed_resume),
         resume_highlights=application.parsed_resume,
-        rubric_version=job.rubric_version,
+        rubric_version=_rubric_version_for(application, job),
         language="en",
     )

@@ -275,7 +275,7 @@ async def entrypoint(ctx: JobContext) -> None:
     sm = InterviewStateMachine(questions=package.questions)
     sm.start()
 
-    # Cascaded STT -> LLM -> TTS pipeline (not speech-to-speech).
+    # Cascaded STT (Deepgram) -> LLM (Gemini) -> TTS (ElevenLabs) pipeline.
     # This means on_user_turn_completed fires after each answer, giving
     # the state machine control over question flow.
     #
@@ -287,36 +287,25 @@ async def entrypoint(ctx: JobContext) -> None:
     #   is speaking — the agent stops immediately and listens
     # - min_endpointing_delay: small delay after VAD fires to avoid
     #   false triggers on breaths/pauses
-    # Read GCP credentials from env (needed for Cloud STT/TTS APIs)
     import os
 
+    from livekit.plugins import deepgram, elevenlabs
     from livekit.plugins import google as lk_google
 
-    gcp_creds_file = os.environ.get(
-        "GOOGLE_APPLICATION_CREDENTIALS",
-        "/home/digvijay/Digvijay/Verdikt/gen-lang-client-0373170935-01e24038db05.json",
-    )
-    gcp_project = os.environ.get(
-        "GOOGLE_CLOUD_PROJECT", "gen-lang-client-0373170935"
-    )
-    gemini_key = os.environ.get("GEMINI_API_KEY", "")
-
     session = AgentSession(
-        stt=lk_google.STT(
-            languages="en-US",
-            model="chirp_3",
+        stt=deepgram.STT(
+            model="nova-3",
             interim_results=True,
-            punctuate=True,
-            credentials_file=gcp_creds_file,
-            project=gcp_project,
+            smart_format=True,
+            api_key=os.environ.get("DEEPGRAM_API_KEY") or None,
         ),
         llm=lk_google.LLM(
             model="gemini-2.5-flash",
-            api_key=gemini_key,
+            api_key=os.environ.get("GEMINI_API_KEY", ""),
         ),
-        tts=lk_google.TTS(
-            voice_name="en-US-Neural2-F",
-            credentials_file=gcp_creds_file,
+        tts=elevenlabs.TTS(
+            voice_id=os.environ.get("ELEVENLABS_VOICE_ID") or "EXAVITQu4vr4xnSDxMaL",
+            api_key=os.environ.get("ELEVENLABS_API_KEY") or None,
         ),
         vad=silero.VAD.load(
             min_speech_duration=0.3,

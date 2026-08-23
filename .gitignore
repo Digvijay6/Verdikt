@@ -31,3 +31,4 @@ frontend/src/types/api.ts
 # build output
 frontend/dist/
 *.tsbuildinfo
+supabase/.temp/

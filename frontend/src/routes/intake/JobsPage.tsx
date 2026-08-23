@@ -17,9 +17,11 @@ type Job = {
   id: string;
   title: string;
   seniority: string;
+  // Named for the question bank it used to build. It now tracks the rubric
+  // build; the column keeps its name because migrations are additive only.
   question_bank_status: "pending" | "building" | "ready" | "failed";
   question_bank_error: string | null;
-  question_bank: unknown[] | null;
+  rubric: { competencies: unknown[] } | null;
   rubric_version: string;
 };
 
@@ -181,11 +183,12 @@ export default function JobsPage() {
           </header>
 
           <p>
-            Question bank: <b>{job.question_bank_status}</b>
+            Scoring rubric: <b>{job.question_bank_status}</b>
             {job.question_bank_status === "ready" && (
               <span className="hint">
                 {" "}
-                · {job.question_bank?.length ?? 0} questions · {job.rubric_version}
+                · {job.rubric?.competencies?.length ?? 0} competencies ·{" "}
+                {job.rubric_version}
               </span>
             )}
           </p>
@@ -203,7 +206,7 @@ export default function JobsPage() {
               onClick={() => rebuild.mutate(job.id)}
               disabled={job.question_bank_status === "building"}
             >
-              Rebuild questions
+              Rebuild rubric
             </button>
           </footer>
         </article>

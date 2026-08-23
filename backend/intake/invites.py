@@ -15,10 +15,10 @@ import hashlib
 import secrets
 from datetime import datetime, timedelta, timezone
 
-import resend
-
 from shared.config import get_settings
 from shared.models.job import Job
+
+from . import mailer
 
 
 def hash_token(token: str) -> str:
@@ -83,20 +83,13 @@ def send_invite_email(
 ) -> str:
     """Send the invite. Returns the provider message id.
 
-    Note for local development: Resend will not deliver to arbitrary addresses
-    until a sending domain is verified. Until then it only delivers to the
-    account owner's own address.
+    Routed through `mailer`, which falls back to SMTP when Resend refuses an
+    address for want of a verified domain. Without that fallback a demo where
+    someone types their own email would silently deliver nothing.
     """
     cfg = get_settings()
-    resend.api_key = cfg.resend_api_key
-    link = invite_link(token)
-
-    sent = resend.Emails.send(
-        {
-            "from": cfg.from_email,
-            "to": [to_email],
-            "subject": f"Your interview for {job.title}",
-            "text": _body(candidate_name, job, link, expires_at),
-        }
+    return mailer.send(
+        to=to_email,
+        subject=f"Your interview for {job.title}",
+        body=_body(candidate_name, job, invite_link(token), expires_at),
     )
-    return sent.get("id", "")

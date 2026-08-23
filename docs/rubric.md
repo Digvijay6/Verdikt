@@ -141,3 +141,25 @@ never causes automatic rejection.
 Every answer persists `model_id` and `prompt_version`; every interview persists
 `rubric_version`. Scores with different provenance must not be silently treated
 as calibrated equivalents.
+
+## Two things are called a rubric — they are not the same thing
+
+| | `job.rubric` (lane 1) | this document (lane 3) |
+|---|---|---|
+| What | competencies with BARS anchors, 1-5 | fixed dimensions, 0-100 |
+| Scope | per job, built by `question_builder` | the whole product, one spec |
+| Varies | yes, by role | no, ever |
+| Carried on | each `Question.dimensions` | `interview_scoring.py` |
+
+`job.rubric` is role-specific: what this job needs and what a 4 looks like for
+it. This document is the aggregation that turns any set of anchored measurements
+into one comparable number. A job's rubric changing bumps `rubric_version`; this
+document changing bumps the scoring version and requires recalibration.
+
+Since D35 the questions differ between candidates while the anchors do not.
+Nothing here changes as a result — anchored measurement and deterministic
+aggregation both operate on `Question.dimensions`, which still arrive in the
+shape they always did. But calibration step 3 now has one more trigger worth
+naming: **a change to `candidate-questions` is an anchor-affecting change**,
+because it changes what candidates are asked to demonstrate against those
+anchors, even though the anchors themselves are untouched.

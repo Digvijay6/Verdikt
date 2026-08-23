@@ -52,18 +52,18 @@ function Header() {
   const { session, org, signOut } = useAuth();
   if (!session) return null;
   return (
-    <header className="mx-auto flex max-w-[72rem] flex-wrap items-center gap-4 px-5 pt-5 pb-1">
+    <header className="app-nav">
       <Link
         to="/jobs"
-        className="text-xl font-semibold tracking-tight no-underline"
+        className="pb-1.5 text-xl font-semibold tracking-tight no-underline"
       >
         Verdikt
       </Link>
 
       <MagicNav items={NAV} />
 
-      <span className="hint ml-auto">{org?.name}</span>
-      <button className="nb-btn" onClick={() => void signOut()}>
+      <span className="hint ml-auto pb-2">{org?.name}</span>
+      <button className="nb-btn mb-1.5" onClick={() => void signOut()}>
         Sign out
       </button>
     </header>
@@ -87,53 +87,58 @@ export default function App() {
       <AuthProvider>
         <BrowserRouter>
           <Header />
-          <Routes>
-            <Route path="/" element={<Navigate to="/jobs" replace />} />
+          <div className="app-page">
+            <Routes>
+              <Route path="/" element={<Navigate to="/jobs" replace />} />
 
-            <Route path="/login" element={<Login />} />
-            <Route path="/signup" element={<Signup />} />
-            <Route path="/onboarding" element={<Onboarding />} />
+              <Route path="/login" element={<Login />} />
+              <Route path="/signup" element={<Signup />} />
+              <Route path="/onboarding" element={<Onboarding />} />
 
-            {/* LANE 1 */}
-            <Route
-              path="/jobs"
-              element={
-                <RequireOrg>
-                  <JobsPage />
-                </RequireOrg>
-              }
-            />
-            <Route
-              path="/applications/:jobId"
-              element={
-                <RequireOrg>
-                  <ReviewQueue />
-                </RequireOrg>
-              }
-            />
+              {/* LANE 1 */}
+              <Route
+                path="/jobs"
+                element={
+                  <RequireOrg>
+                    <JobsPage />
+                  </RequireOrg>
+                }
+              />
+              <Route
+                path="/applications/:jobId"
+                element={
+                  <RequireOrg>
+                    <ReviewQueue />
+                  </RequireOrg>
+                }
+              />
 
-            {/* Public - no account, ever */}
-            <Route path="/apply/:jobId" element={<ApplicationForm />} />
-            <Route path="/interview/:token" element={<Placeholder name="Interview" />} />
+              {/* Public - no account, ever */}
+              <Route path="/apply/:jobId" element={<ApplicationForm />} />
+              <Route
+                path="/interview/:token"
+                element={<Placeholder name="Interview" />}
+              />
 
-            {/* LANE 3 */}
-            <Route
-              path="/leaderboard/*"
-              element={
-                <RequireOrg>
-                  <Placeholder name="Leaderboard" />
-                </RequireOrg>
-              }
-            />
-            <Route
-              path="/candidates/*"
-              element={
-                <RequireOrg>
-                  <Placeholder name="Candidate detail" />
-                </RequireOrg>
-              }
-            />
-          </Routes>
+              {/* LANE 3 */}
+              <Route
+                path="/leaderboard/*"
+                element={
+                  <RequireOrg>
+                    <Placeholder name="Leaderboard" />
+                  </RequireOrg>
+                }
+              />
+              <Route
+                path="/candidates/*"
+                element={
+                  <RequireOrg>
+                    <Placeholder name="Candidate detail" />
+                  </RequireOrg>
+                }
+              />
+            </Routes>
+          </div>
         </BrowserRouter>
       </AuthProvider>
     </QueryClientProvider>

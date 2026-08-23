@@ -227,6 +227,75 @@
     font-weight: 500;
   }
 
+  /* --- the app shell ---------------------------------------------------- */
+
+  /* The whole product is one sheet, and the nav sits on its top edge like tabs
+     on a folder. The active item breaks through that edge and fuses with the
+     sheet; the inactive ones stay flat on the layer behind. That is what makes
+     the current section read as *part of* the page rather than a link above it.
+
+     The strip and the sheet overlap by exactly one hairline: the strip pulls
+     down, and the active tab paints over the segment of the sheet's border
+     that runs beneath it. */
+  .app-nav {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: 0.9rem;
+    max-width: 72rem;
+    margin: 1.4rem auto calc(-1 * var(--edge-w));
+    padding: 0 2.1rem;
+    position: relative;
+    z-index: 1;
+  }
+
+  /* Signed out, the header renders nothing and the sheet is the first element
+     on the page, so it has to supply its own top gap. Kept off the default
+     because a top margin here would collapse against the strip's negative one
+     and undo the single-hairline overlap the tab depends on. */
+  .app-page:first-child {
+    margin-top: 1.4rem;
+  }
+
+  .app-page {
+    max-width: 72rem;
+    margin: 0 auto 4rem;
+    border: var(--edge-w) solid var(--color-edge);
+    border-radius: var(--radius-card);
+    background: var(--color-panel);
+    box-shadow: var(--shadow-card);
+    padding: 1.75rem 2rem 3rem;
+  }
+
+  /* Routes still say `wrap`, but inside the sheet the sheet owns the width and
+     the padding. Neutralised here rather than edited out of every route, so
+     lanes 2 and 3 can keep using `wrap` without knowing about the shell. */
+  .app-page .wrap {
+    max-width: none;
+    padding: 0;
+    margin: 0;
+  }
+  .app-page .wrap.narrow {
+    max-width: 26rem;
+    margin: 0 auto;
+  }
+
+  /* One nav item. The active one is a tab; the rest are plain text, because
+     giving them chrome too would flatten the front-to-back distinction that
+     the whole shape depends on. */
+  .app-navitem {
+    position: relative;
+    padding: 0.5rem 1.15rem 0.7rem;
+    font-weight: 600;
+    font-size: 0.95rem;
+    color: var(--color-muted);
+    text-decoration: none;
+    border-radius: var(--radius-btn) var(--radius-btn) 0 0;
+  }
+  .app-navitem[aria-current="page"] {
+    color: var(--color-ink);
+  }
+
   /* --- the folder-tab seam ---------------------------------------------- */
 
   /* The active tab fuses into the panel below it: it shares the panel's

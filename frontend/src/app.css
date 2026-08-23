@@ -337,10 +337,24 @@
     margin-left: -1.25rem;
   }
 
+  /* Content tabs sit directly on their panel rather than inside app-nav
+     padding. When the first one is active, remove their normal content inset
+     so its outside edge starts on the panel's left border. */
+  .folder-strip:not(.folder-strip-dark):has(
+      .folder-tab:first-of-type[aria-selected="true"]
+    ) {
+    margin-left: 0;
+  }
+
   /* The active first tab owns the sheet's top-left corner. Keeping the page
      rounded there makes its border bend away from the tab and leaves the two
      outlines visibly disconnected. */
   .app-nav:has(.folder-tab:first-of-type[aria-current="page"]) + .app-page {
+    border-top-left-radius: 0;
+  }
+
+  .folder-strip:has(.folder-tab:first-of-type[aria-selected="true"])
+    + .nb-tabpanel {
     border-top-left-radius: 0;
   }
 
@@ -437,12 +451,26 @@
     );
   }
 
+  .folder-strip:not(.folder-strip-dark)
+    .folder-tab:first-of-type[aria-selected="true"]
+    .folder-shape,
+  .folder-strip:not(.folder-strip-dark)
+    .folder-tab:first-of-type[aria-selected="true"]
+    .folder-shape::after {
+    clip-path: polygon(
+      0 100%,
+      0 0,
+      calc(100% - var(--slant)) 0,
+      100% 100%
+    );
+  }
+
   /* `shape()` lets the top corners curve into the slanted sides while the
      open bottom corners stay square and attached to the page. The polygon
      declarations above remain the fallback for older browsers. */
   @supports (clip-path: shape(from 0 0, line to 100% 0, close)) {
-    .app-nav .folder-shape,
-    .app-nav .folder-shape::after {
+    .folder-shape,
+    .folder-shape::after {
       clip-path: shape(
         from 0 100%,
         line to calc(var(--slant) - 0.1rem) var(--tab-corner),
@@ -461,6 +489,24 @@
       .folder-shape,
     .app-nav
       .folder-tab:first-of-type[aria-current="page"]
+      .folder-shape::after {
+      clip-path: shape(
+        from 0 100%,
+        line to 0 var(--tab-corner),
+        curve to var(--tab-corner) 0 with 0 0 from origin,
+        line to calc(100% - var(--slant) - var(--tab-corner)) 0,
+        curve to calc(100% - var(--slant) + 0.1rem) var(--tab-corner)
+          with calc(100% - var(--slant)) 0 from origin,
+        line to 100% 100%,
+        close
+      );
+    }
+
+    .folder-strip:not(.folder-strip-dark)
+      .folder-tab:first-of-type[aria-selected="true"]
+      .folder-shape,
+    .folder-strip:not(.folder-strip-dark)
+      .folder-tab:first-of-type[aria-selected="true"]
       .folder-shape::after {
       clip-path: shape(
         from 0 100%,

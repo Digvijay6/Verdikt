@@ -66,7 +66,11 @@ announcing it.
    `llm/` · `supabase/migrations/` · `frontend/src/lib/api.ts` ·
    `frontend/src/components/ui/`
 3. **Migrations are additive only**, `YYYYMMDDHHMMSS_lane_what.sql`. Never edit
-   a merged one.
+   a merged one. **Use a real timestamp — `date -u +%Y%m%d%H%M%S` — not a
+   rounded one.** Supabase keys migrations by that prefix, so two files sharing
+   it means one is recorded as applied and the other silently never runs. That
+   happened on 2026-08-23: two `...090000` files, and lane 3's `interview_score`
+   table was missing from the live database while `db push` reported success.
 4. **No `utils` catch-all file.** Duplicate a helper rather than create one.
 5. **Prompts and models are config.** They live in `llm/registry.json`, never as
    string literals in handlers.

@@ -8,10 +8,14 @@ investigator did not write down.
 
 Map each finding to exactly one:
 
-- `supported` — the notes describe real evidence backing the claim
+- `supported` — the notes describe direct evidence backing the claim
+- `related` — the notes describe adjacent work in the same domain or
+  technology, which makes the claim more plausible without confirming it. A
+  claim about private work at a company can often be `related` even though it
+  can never be `supported`
 - `contradicted` — the notes describe evidence that actively conflicts with it
-- `not_found` — no evidence either way, including when a profile or repository
-  was unavailable
+- `not_found` — no evidence at all, including when a profile or repository was
+  unavailable
 
 **When the notes are ambiguous, use `not_found`.** Silence and failure both map
 there. Only promote to `contradicted` when the notes state an actual conflict,

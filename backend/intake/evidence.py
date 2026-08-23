@@ -6,11 +6,17 @@ finding decides the next call: a repo whose name matches a claimed technology
 is worth opening; one that is a two-commit fork is not. That is what tools and
 a model-driven trajectory are actually for.
 
-**The asymmetry is the whole design (D32).** A supported claim raises
+**The asymmetry is the whole design (D34).** A supported claim raises
 confidence. A contradicted claim lowers it. **Finding nothing does neither.**
 Most professional work lives in private company repositories, so absence of
 public evidence says nothing about ability — and penalising it would quietly
 punish anyone whose best work is behind an employer's firewall.
+
+A fourth verdict, `related`, exists because the first three lose real signal.
+A claim about private work can never be `supported` by a public repo — the
+artifact is not there. But someone who has built a payment gateway of their own
+is a more plausible author of one at work than someone who has not. That is
+corroboration, not proof, and collapsing it into `not_found` discards it.
 """
 
 from __future__ import annotations
@@ -43,6 +49,11 @@ _BUDGET_KEY = "tool_calls_used"
 
 class Verdict(StrEnum):
     SUPPORTED = "supported"
+    # Adjacent evidence: not the artifact claimed, but work in the same domain
+    # or technology that makes the claim more plausible. Someone with a personal
+    # payments repo is a more credible author of a payments service at work.
+    # Raises confidence modestly; never confirms the claim.
+    RELATED = "related"
     CONTRADICTED = "contradicted"
     NOT_FOUND = "not_found"
 

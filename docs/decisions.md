@@ -490,7 +490,7 @@ their rubric/model/prompt provenance.
 v2 composite and never causes automatic rejection. This supersedes the earlier
 unimplemented note about a multiplicative integrity penalty.
 
-## D31 · Google for Jobs, not LinkedIn
+## D33 · Google for Jobs, not LinkedIn
 
 **Chosen:** publish `JobPosting` JSON-LD on a server-rendered public page at
 `/j/{job_id}`, discovered through `sitemap.xml`. Free, sanctioned, no gatekeeper.
@@ -551,7 +551,7 @@ liability plus a ban risk aimed at customers.
 
 ---
 
-## D32 · Verify claims from links candidates give us; never source strangers
+## D34 · Verify claims from links candidates give us; never source strangers
 
 **Chosen:** an ADK agent that checks a candidate's claims against the GitHub
 profile **they put on their own application**. Verification, not sourcing.
@@ -576,13 +576,26 @@ data. Article 14 requires notifying each person within a month, and it applies
 to public data. Links a candidate hands you on an application are a different
 basis entirely.
 
-## The asymmetry, which is the whole design
+## The four verdicts
 
 | Finding | Effect |
 |---|---|
-| Claim supported by real evidence | raises confidence |
-| Claim actively contradicted | lowers it |
-| **Nothing found either way** | **changes nothing** |
+| `supported` — direct evidence for the claim | raises confidence |
+| `related` — adjacent work in the same domain | raises it modestly |
+| `contradicted` — evidence conflicts with the claim | lowers it |
+| **`not_found` — nothing either way** | **changes nothing** |
+
+`related` was added in prompt v3 because the other three lose real signal. A
+claim about private work can **never** be `supported` — the artifact is not
+public. But someone who has built a payment gateway of their own is a more
+plausible author of one at work than someone with no payments code at all.
+Collapsing that into `not_found` throws away corroboration.
+
+It is corroboration, never proof, and the `detail` must convey strength: "a
+200-line tutorial integration" and "300 commits over two years" are both
+`related` to a work claim, and a recruiter needs to see which. The prompt also
+guards against stretching it — a React todo app is not `related` to a claim
+about distributed systems.
 
 Absence of public evidence is not evidence of absence. Most professional work
 lives in private company repositories, so penalising an empty GitHub punishes

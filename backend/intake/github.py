@@ -11,7 +11,7 @@ you actually wrote the code they claim is not.
 
 Every function fails soft. A rate limit, a deleted repo, a private account, a
 404 — none of them are the candidate's fault, and none may ever count against
-them. See D32.
+them. See D34.
 """
 
 from __future__ import annotations

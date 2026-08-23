@@ -73,10 +73,15 @@ def screen_application(
         content += (
             "\n\n## Verified evidence from the GitHub profile they supplied\n\n"
             + evidence.model_dump_json(indent=2)
-            + "\n\nA `not_found` verdict means nothing was located either way. It is "
-            "NOT evidence against the claim - most professional work is in private "
-            "repositories. Treat it as neutral. Only `supported` and `contradicted` "
-            "should move your assessment."
+            + "\n\nHow to read the verdicts:\n"
+            "- `supported`: direct evidence for the claim. Raise confidence.\n"
+            "- `related`: adjacent work in the same domain. The claim is more "
+            "plausible, though unproven. Raise confidence modestly, and weigh "
+            "the detail - a tutorial project is weaker than a sustained one.\n"
+            "- `contradicted`: evidence conflicts with the claim. Lower it.\n"
+            "- `not_found`: nothing either way. **Neutral.** NOT evidence against "
+            "the claim - most professional work sits in private repositories, so "
+            "absence says nothing about ability."
         )
     return run(
         "screen-application",

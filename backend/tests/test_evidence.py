@@ -1,6 +1,6 @@
 """Candidate evidence gathering.
 
-The asymmetry is the point (D32): a supported claim raises confidence, a
+The asymmetry is the point (D34): a supported claim raises confidence, a
 contradicted one lowers it, and finding nothing does neither. Most of these
 tests exist to make sure "nothing found" never becomes a negative signal,
 because that failure would be invisible — it looks like a reasonable score.
@@ -150,4 +150,13 @@ def test_not_found_is_a_distinct_verdict_from_contradicted():
     """Collapsing these would turn silence into a negative signal, which is the
     exact failure this design exists to prevent."""
     assert Verdict.NOT_FOUND != Verdict.CONTRADICTED
-    assert {v.value for v in Verdict} == {"supported", "contradicted", "not_found"}
+    assert {v.value for v in Verdict} == {
+        "supported", "related", "contradicted", "not_found"
+    }
+
+
+def test_related_is_distinct_from_both_supported_and_not_found():
+    """A claim about private work can never be `supported` - the artifact is not
+    public. But adjacent work makes it more plausible, and collapsing that into
+    `not_found` throws away real signal."""
+    assert Verdict.RELATED not in (Verdict.SUPPORTED, Verdict.NOT_FOUND)

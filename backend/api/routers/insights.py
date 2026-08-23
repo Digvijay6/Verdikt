@@ -7,17 +7,25 @@ no vector store, no chunking, and citations get more accurate rather than less.
 """
 
 import json
+import logging
+from datetime import UTC, datetime
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 
+from agents.recruiter_chat import (
+    ChatMessage,
+    RecruiterChatSession,
+    answer_question,
+)
 from shared.db import db
 from shared.models.scoring import InterviewResult
 
 from ..deps import Recruiter, current_recruiter
 
 router = APIRouter(prefix="/insights", tags=["insights"])
+log = logging.getLogger(__name__)
 
 CurrentRecruiter = Annotated[Recruiter, Depends(current_recruiter)]
 DbClient = Annotated[Any, Depends(db)]
@@ -32,6 +40,11 @@ INTERVIEW_SCORE_SELECT = (
 INTERVIEW_SELECT = "id,org_id,application_id,job_id,status"
 APPLICATION_SELECT = "id,org_id,candidate_id"
 CANDIDATE_SELECT = "id,org_id,full_name,email"
+CHAT_SESSION_SELECT = "id,org_id,interview_id,recruiter_id,messages,created_at,updated_at"
+
+
+class RecruiterChatRequest(BaseModel):
+    message: str = Field(min_length=1, max_length=2_000)
 
 
 class LeaderboardEntry(BaseModel):
@@ -135,10 +148,118 @@ def interview_detail(
     recruiter: CurrentRecruiter,
     client: DbClient,
 ) -> InterviewResult:
+    return _interview_result_for_org(client, recruiter.org_id, interview_id)
+
+
+@router.get(
+    "/interviews/{interview_id}/chat",
+    response_model=RecruiterChatSession,
+)
+def recruiter_chat_history(
+    interview_id: str,
+    recruiter: CurrentRecruiter,
+    client: DbClient,
+) -> RecruiterChatSession:
+    """Return this recruiter's persisted conversation for one interview."""
+    _interview_result_for_org(client, recruiter.org_id, interview_id)
+    row = _chat_session_row(client, recruiter.org_id, recruiter.id, interview_id)
+    return RecruiterChatSession(
+        session_id=row.get("id") if row else None,
+        interview_id=interview_id,
+        messages=_chat_messages(row),
+    )
+
+
+@router.post(
+    "/interviews/{interview_id}/chat",
+    response_model=RecruiterChatSession,
+)
+async def recruiter_chat(
+    interview_id: str,
+    request: RecruiterChatRequest,
+    recruiter: CurrentRecruiter,
+    client: DbClient,
+) -> RecruiterChatSession:
+    """Ask Gemini to explain a score from the complete stored dossier."""
+    result = _interview_result_for_org(client, recruiter.org_id, interview_id)
+    row = _chat_session_row(client, recruiter.org_id, recruiter.id, interview_id)
+    history = _chat_messages(row)
+    dossier = _build_chat_dossier(client, recruiter.org_id, result)
+
+    try:
+        answer, provenance = await answer_question(
+            recruiter_id=recruiter.id,
+            dossier=dossier,
+            history=history,
+            question=request.message,
+        )
+    except Exception as exc:
+        log.exception("Recruiter chat failed for interview %s", interview_id)
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="The score assistant could not answer right now",
+        ) from exc
+
+    now = datetime.now(UTC)
+    messages = [
+        *history,
+        ChatMessage(role="user", content=request.message, created_at=now),
+        ChatMessage(
+            role="assistant",
+            content=answer,
+            created_at=now,
+            model_id=provenance.model_id,
+            prompt_version=provenance.prompt_version,
+        ),
+    ]
+    payload = [message.model_dump(mode="json") for message in messages]
+
+    try:
+        if row:
+            response = (
+                client.table("recruiter_chat_session")
+                .update({"messages": payload})
+                .eq("org_id", recruiter.org_id)
+                .eq("id", row["id"])
+                .execute()
+            )
+        else:
+            response = (
+                client.table("recruiter_chat_session")
+                .insert(
+                    {
+                        "org_id": recruiter.org_id,
+                        "interview_id": interview_id,
+                        "recruiter_id": recruiter.id,
+                        "messages": payload,
+                    }
+                )
+                .execute()
+            )
+    except Exception as exc:
+        log.exception("Could not persist recruiter chat for interview %s", interview_id)
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Could not save recruiter chat",
+        ) from exc
+
+    saved = (response.data or [None])[0]
+    return RecruiterChatSession(
+        session_id=(saved or row or {}).get("id"),
+        interview_id=interview_id,
+        messages=messages,
+    )
+
+
+def _interview_result_for_org(
+    client: Any,
+    org_id: str,
+    interview_id: str,
+) -> InterviewResult:
     rows = _query_rows(
         client.table("interview_score")
         .select(INTERVIEW_SCORE_SELECT)
-        .eq("org_id", recruiter.org_id)
+        .eq("org_id", org_id)
         .eq("interview_id", interview_id)
         .limit(1)
     )
@@ -148,7 +269,7 @@ def interview_detail(
     interview_rows = _query_rows(
         client.table("interview")
         .select(INTERVIEW_SELECT)
-        .eq("org_id", recruiter.org_id)
+        .eq("org_id", org_id)
         .eq("id", interview_id)
         .limit(1)
     )
@@ -161,6 +282,160 @@ def interview_detail(
         status_code=status.HTTP_404_NOT_FOUND,
         detail="Interview result not available yet",
     )
+
+
+def _chat_session_row(
+    client: Any,
+    org_id: str,
+    recruiter_id: str,
+    interview_id: str,
+) -> dict[str, Any] | None:
+    rows = _query_rows(
+        client.table("recruiter_chat_session")
+        .select(CHAT_SESSION_SELECT)
+        .eq("org_id", org_id)
+        .eq("interview_id", interview_id)
+        .eq("recruiter_id", recruiter_id)
+        .order("created_at", desc=True)
+        .limit(1)
+    )
+    return rows[0] if rows else None
+
+
+def _chat_messages(row: dict[str, Any] | None) -> list[ChatMessage]:
+    if not row:
+        return []
+    raw_messages = _json_value(row.get("messages"), [])
+    try:
+        return [ChatMessage.model_validate(message) for message in raw_messages]
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Stored recruiter chat has an invalid shape",
+        ) from exc
+
+
+def _build_chat_dossier(
+    client: Any,
+    org_id: str,
+    result: InterviewResult,
+) -> dict[str, Any]:
+    interview = _first_row(
+        _query_rows(
+            client.table("interview")
+            .select("id,org_id,application_id,job_id,status,transcript,started_at,ended_at")
+            .eq("org_id", org_id)
+            .eq("id", result.interview_id)
+            .limit(1)
+        )
+    )
+    application = _first_row(
+        _query_rows(
+            client.table("application")
+            .select("id,org_id,job_id,candidate_id,parsed_resume,screening,hard_checks")
+            .eq("org_id", org_id)
+            .eq("id", result.application_id)
+            .limit(1)
+        )
+    )
+    job = _first_row(
+        _query_rows(
+            client.table("job")
+            .select("id,org_id,title,seniority,jd_text,rubric,rubric_version")
+            .eq("org_id", org_id)
+            .eq("id", result.job_id)
+            .limit(1)
+        )
+    )
+    question_rows = _query_rows(
+        client.table("question_instance")
+        .select(
+            "id,question_id,order_index,question_text,question_type,competency,"
+            "seniority,resume_headline_claim,flagship_project,central_to_role,"
+            "transcript_segment,followed_up"
+        )
+        .eq("org_id", org_id)
+        .eq("interview_id", result.interview_id)
+        .order("order_index")
+    )
+    question_ids = [row["id"] for row in question_rows]
+    turns = (
+        _query_rows(
+            client.table("question_conversation_turn")
+            .select(
+                "question_instance_id,turn_index,speaker,text,start_ms,end_ms,is_follow_up"
+            )
+            .eq("org_id", org_id)
+            .in_("question_instance_id", question_ids)
+            .order("turn_index")
+        )
+        if question_ids
+        else []
+    )
+    claims = (
+        _query_rows(
+            client.table("question_scoring_claim")
+            .select("question_instance_id,source,claim_index,claim_text")
+            .eq("org_id", org_id)
+            .in_("question_instance_id", question_ids)
+            .order("claim_index")
+        )
+        if question_ids
+        else []
+    )
+
+    turns_by_question: dict[str, list[dict[str, Any]]] = {}
+    for turn in turns:
+        turns_by_question.setdefault(turn["question_instance_id"], []).append(turn)
+    claims_by_question: dict[str, list[dict[str, Any]]] = {}
+    for claim in claims:
+        claims_by_question.setdefault(claim["question_instance_id"], []).append(claim)
+    scores_by_question = {
+        answer.question_id: answer.model_dump(mode="json") for answer in result.answers
+    }
+
+    questions = []
+    for row in question_rows:
+        questions.append(
+            {
+                **{key: value for key, value in row.items() if key != "id"},
+                "conversation": turns_by_question.get(row["id"], []),
+                "claims": claims_by_question.get(row["id"], []),
+                "assessment": scores_by_question.get(row.get("question_id")),
+            }
+        )
+
+    parsed_resume = _json_value(application.get("parsed_resume"), {})
+    resume = _resume_without_direct_identifiers(parsed_resume)
+    score_payload = result.model_dump(mode="json")
+    return {
+        "interview": interview,
+        "job": job,
+        "resume": resume,
+        "screening": {
+            "hard_checks": _json_value(application.get("hard_checks"), []),
+            "assessment": _json_value(application.get("screening"), None),
+        },
+        "score_summary": score_payload,
+        "review_signals": {
+            "needs_human_review": result.needs_human_review,
+            "review_reasons": [str(reason) for reason in result.review_reasons],
+            "hard_gate_applied": result.hard_gate_applied,
+            "integrity": result.integrity.model_dump(mode="json"),
+        },
+        "questions": questions,
+    }
+
+
+def _resume_without_direct_identifiers(value: Any) -> dict[str, Any]:
+    if not isinstance(value, dict):
+        return {}
+    excluded = {"full_name", "email", "phone", "location"}
+    return {key: item for key, item in value.items() if key not in excluded}
+
+
+def _first_row(rows: list[dict[str, Any]]) -> dict[str, Any]:
+    return rows[0] if rows else {}
 
 
 def _percentiles_by_interview_id(

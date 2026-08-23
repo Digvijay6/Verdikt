@@ -62,6 +62,13 @@ class CandidateEvidence(BaseModel):
     summary: str = Field(description="One or two sentences, neutral in tone")
     profile_url: str | None = None
 
+    # Set when GitHub could not be reached at all — rate limit, outage, a
+    # profile that no longer exists. Without this, "we checked and found
+    # nothing" and "we never managed to check" both arrive as an empty list,
+    # and a recruiter reading the review queue cannot tell which happened.
+    checked: bool = True
+    unavailable_reason: str | None = None
+
 
 # --- tools ----------------------------------------------------------------
 
@@ -194,12 +201,25 @@ async def gather_async(
         notes = final.state.get("evidence") or ""
         used = final.state.get(_BUDGET_KEY, 0)
         log.info("evidence for %s: %d tool calls", username, used)
+
         if not notes.strip():
             return CandidateEvidence(
                 summary="No evidence gathered.",
                 profile_url=f"https://github.com/{username}",
+                checked=False,
+                unavailable_reason="The agent produced no findings.",
             )
-        return structure(notes)
+
+        result = structure(notes)
+        result.profile_url = result.profile_url or f"https://github.com/{username}"
+        if not result.findings:
+            result.checked = False
+            result.unavailable_reason = (
+                "GitHub returned nothing for any lookup. Usually a rate limit or "
+                "an outage; occasionally a profile that has been renamed or made "
+                "private. Not a signal about the candidate."
+            )
+        return result
     finally:
         await runner.close()
 

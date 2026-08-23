@@ -594,11 +594,30 @@ were permitted: penalising an unverifiable employment claim hits people with no
 LinkedIn, private profiles, stale profiles, or from regions where it is not
 dominant.
 
-`contradicted` is a deliberately high bar. "Every Go repository is a forked
-tutorial with two commits" is a contradiction. "Claims Kubernetes, no Kubernetes
-repositories" is `not_found`. When unsure it is `not_found`, because a wrong
-`contradicted` costs someone an interview over a repository they never
-mentioned.
+`contradicted` is a deliberately high bar, and **prompt v2 narrowed it
+further after a name-collision problem was spotted**.
+
+A repository may only contradict a claim if **the candidate named that
+repository**. Otherwise what was found is a *different artifact*, and a
+different artifact cannot contradict anything.
+
+The failure this prevents: someone builds a real payments service at work
+(private, substantial) and also has a small personal `payment-gateway` repo
+they wrote while learning. The names collide, the agent judges the work claim by
+the hobby repo, and an honest candidate loses points for having practised. Given
+how generic project names are — `chat-app`, `dashboard`, `job-portal` — this is
+likely rather than hypothetical.
+
+So the rule is now:
+
+| Claim shape | Can it be contradicted? |
+|---|---|
+| Names a specific repo, and that repo is not what they described | yes |
+| Work at a company, similar-sounding personal repo found | **never** — private work is not on GitHub by definition |
+| A skill in general ("knows Kafka") | **never** — absence cannot disprove a skill |
+
+Enforced in both stages: the agent prompt and the formatter, so a stray
+`contradicted` cannot slip through the second pass either.
 
 **Failures map to `not_found` too.** A rate limit, a renamed account, an
 outage — the tools say so explicitly in their output, so the model cannot infer

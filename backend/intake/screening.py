@@ -65,6 +65,10 @@ def screen_application(
         "Candidate resume, as structured data:\n\n"
         + resume.model_dump_json(indent=2)
     )
+    if evidence is not None and not getattr(evidence, "checked", True):
+        # Say nothing to the model rather than hand it an empty findings list,
+        # which reads as "we looked and there was nothing there".
+        evidence = None
     if evidence is not None:
         content += (
             "\n\n## Verified evidence from the GitHub profile they supplied\n\n"

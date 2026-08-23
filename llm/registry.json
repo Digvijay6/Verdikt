@@ -80,9 +80,9 @@
       "version": "v1"
     },
     "candidate-evidence": {
-      "prompt": "candidate-evidence.v1.md",
+      "prompt": "candidate-evidence.v2.md",
       "model": "gemini-3.7-flash",
-      "version": "v1"
+      "version": "v2"
     },
     "candidate-evidence-format": {
       "prompt": "candidate-evidence-format.v1.md",

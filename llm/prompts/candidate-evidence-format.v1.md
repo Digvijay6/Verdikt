@@ -17,6 +17,14 @@ Map each finding to exactly one:
 there. Only promote to `contradicted` when the notes state an actual conflict,
 because a wrong `contradicted` costs someone an interview.
 
+**Downgrade a `contradicted` to `not_found` unless the notes make clear the
+candidate named that exact repository.** A repo that merely resembles something
+they described is a different artifact — someone can have built a payments
+service at work and also have a small personal `payment-gateway` repo, and the
+second says nothing about the first. Claims about employment at a company can
+never be contradicted by a personal repository, because private work is not on
+GitHub by definition.
+
 ## Fields
 
 - `claim` — the candidate's claim, as the notes state it

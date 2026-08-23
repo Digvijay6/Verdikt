@@ -3,139 +3,125 @@
 **The only file here that changes often.** Update it when you finish a piece of
 work. Everything else in `docs/` is stable by design.
 
+If you are an agent reading this cold: check `docs/decisions.md` before
+proposing anything. It records what was rejected and why.
+
 Last updated: 2026-08-23
 
 ---
 
-## The environment is live, and multi-tenant
+## Branches
 
-Supabase project provisioned, schema rebuilt for multi-tenancy and applied.
+`main` moves only through reviewed PRs. Nobody pushes to it directly.
 
-- **11 tables + 1 view present**, verified against the live project. The new
-  `interview_score` and scoring-rubric-v2 migrations are ready to push.
-- **Cross-org isolation verified**, not assumed. Attaching an application to
-  another org's job fails on `application_org_id_job_id_fkey`; pairing an org's
-  job with another org's candidate fails on the candidate FK. Postgres refuses
-  both — see D25
-- **`resumes` bucket** created: private, PDF only, 10 MB cap
-- **`docker compose up`** boots api (:8000) and frontend (:5173) in ~3s
+| Lane | Branch | Merged to main |
+|---|---|---|
+| 1 — Intake | `intake` | yes, PR #1 |
+| 3 — Insights | `dev/pranjal` | yes, PR #2 |
+| 2 — Interview | `ai-call` | **not yet** |
 
-**47 non-ADK backend tests passing.** The question-builder suite cannot collect
-in the current local venv because `google.adk` is not installed.
+```bash
+git pull --rebase origin main    # take their work first
+git push                          # your branch, never main
+```
 
-## Built
+## Live environment
 
-**Tenancy (shared)**
-- `shared/models/organization.py` — Organization, Membership, Plan, Role
-- `shared/plans.py` — tier limits with per-org override
-- `shared/tenancy.py` — membership resolution
-- `api/deps.py` — org resolved from membership per request, 7 tests
-- Repo scaffold — full tree, pushed to `Digvijay6/Verdikt` on `main`
-- `backend/shared/models/` — **all three model files are complete.** These are
-  the cross-lane contracts. `candidate.py` 🔵, `interview.py` 🟡,
-  `scoring.py` 🟡🟢
-- `backend/shared/llm.py` — registry-driven `run(task, schema)`, returns
-  `(parsed, Provenance)`
-- `backend/shared/config.py`, `db.py`
-- `backend/api/main.py` — app, CORS, routers mounted
-- `backend/api/deps.py` — Supabase JWT verification
-- `backend/api/routers/insights.py` — org-scoped leaderboard and interview
-  detail read `interview_score` rows and stored `InterviewResult` payloads
-- `supabase/migrations/20260822000001_lane_all_initial_schema.sql` and
-  `20260822120000_lane_all_multitenancy.sql` — shared tables for intake,
-  interview, insights, and multi-tenant isolation
-- `supabase/migrations/20260823090000_lane_all_interview_score.sql` — additive
-  `interview_score` table for leaderboard/detail score reads
-- `supabase/migrations/20260823100000_lane_all_scoring_rubric_v2.sql` — additive
-  0-100 rubric aggregates and review reasons for `interview_score`
-- `backend/shared/interview_scoring.py` — deterministic seniority weights,
-  ownership cap, consistency penalties, must-have cap, and review triggers
-- `llm/prompts/score-answer.v2.md` — fixed technical accuracy, depth, ownership,
-  follow-up resilience, and consistency anchors; registry task bumped to v2
-- `frontend/src/lib/api.ts` — typed client, public vs authenticated split
-- `frontend/` — Vite + React + Router skeleton
-- `llm/registry.json` — all 8 tasks registered
-- `llm/prompts/score-answer.v2.md`, `screen-application.v1.md` — written
-  properly, they encode the rubric and bias rules
-- Docs: `architecture.md`, `decisions.md`, `contracts.md`, `rubric.md`,
-  `compliance.md`, plus `CLAUDE.md`
+- Supabase project provisioned. **12 tables + 1 view**, every lane's
+- Cross-org isolation **verified**: a cross-tenant insert is rejected by the
+  composite foreign keys (D25)
+- `resumes` bucket: private, PDF only, 10 MB
+- **Gemini key live.** Model ids corrected against the API — two in the original
+  registry did not exist. `gemini-3.7-flash` for extraction and speed,
+  `gemini-3.1-pro-preview` where reasoning depth pays
+- **Resend key live**, sandbox mode: delivers only to the account owner's
+  address until a domain is verified
+- **LiveKit credentials verified** (`ListRooms` 200)
+- **All five migrations applied.** Teammates now have dashboard access and can
+  run their own
+- `docker compose up` boots api (:8000) and frontend (:5173) in ~3s
 
-**Lane 1 — backend**
-- `intake/hard_checks.py` — deterministic gate, 16 tests
-- `intake/requirements.py` — Gemini extracts hard requirements from the JD
-- `intake/parsing.py` · `screening.py` · `invites.py` · `repo.py` · `pipeline.py`
-- `intake/question_builder.py` — the ADK workflow, 11 tests
-- `api/routers/intake.py` — 11 endpoints, all org-scoped
+## Lane 1 — complete, verified end to end
 
-**Lane 1 — frontend**
-- `ApplicationForm.tsx` (public, consent gate) · `JobsPage.tsx` (with pipeline
-  tiles) · `ReviewQueue.tsx`. Typecheck clean, production build succeeds.
+Not "the code exists" — the whole path has been run against real Supabase,
+Gemini and Resend, with a real resume, and the invite email arrived.
 
-**Shared**
-- `shared/llm.py` — PDF input, dotted task keys, `Provenance` on every call
-- `llm/prompts/` — `resume-parse`, `screen-application`, `jd-to-requirements`,
-  7 `qb/` prompts
-- Docker Compose, versions pinned and checked against PyPI
+```
+job created -> requirements extracted from the JD by Gemini
+            -> ADK question_builder produces the bank
+   application received -> parsed -> hard checks -> LLM screen
+            -> invite minted -> email delivered
+```
 
-## Blocked on one thing
+- Signup, login, company onboarding. Passwords never reach our server
+- `PUT /jobs/{id}` edit, `PUT /jobs/{id}/screening-profile`, `POST .../close`
+- Public posting at `/j/{id}` with Google `JobPosting` JSON-LD, plus
+  `sitemap.xml` and `robots.txt` (D31)
+- Public application form, consent recorded before the file is read
+- Gemini parses the PDF natively, anchored to today's date (D30)
+- Deterministic hard checks, deliberately permissive on ambiguity (D18)
+- LLM screen with required evidence quotes and provenance
+- Dashboard tiles, review queue, decisions recording `decided_by`
+- `intake/question_builder.py` — **the only ADK usage in the repo** (D9):
+  SequentialAgent -> ParallelAgent -> LlmAgent -> LoopAgent, 7 LLM sub-agents
 
-**`GEMINI_API_KEY` is still a placeholder.** Everything that does not call
-Gemini works. Creating a job starts requirement extraction and the question-bank
-build; both will fail and record their errors on the job — correct behaviour,
-not a bug.
+## Lane 3 — merged
 
-**The model ids in `llm/registry.json` are unverified.** They came from
-documentation, not a live API. A wrong id fails at call time rather than
-startup, so it looks fine until the first build silently fails.
+- `api/routers/insights.py` — org-scoped leaderboard and interview detail
+- `shared/interview_scoring.py` — deterministic seniority weights, ownership
+  cap, consistency penalties, must-have cap, review triggers
+- `interview_score` table plus rubric v2 aggregates (0-100 composite)
+- `llm/prompts/score-answer.v2.md`, registry task bumped to v2
 
-## Not built yet
+## Lane 2 — in flight on `ai-call`
+
+Voice state machine, scoring pipeline, proctor, agent worker, redeem endpoint,
+room metadata, silero VAD. Seven commits unmerged. They have added
+`livekit-plugins-silero` and `structlog` to the `[voice]` extra.
+
+## Two coordination failures worth learning from
+
+Both were silent. Both cost real time.
+
+**Migration timestamp collision.** Two migrations shared `20260823090000`.
+Supabase keys applied migrations by that prefix, so recording one marked the
+version done and lane 3's `interview_score` **could never run** — while
+`db push` reported success. Fixed by renaming lane 1's file and repairing the
+remote history.
+*Rule now in CLAUDE.md: generate timestamps with `date -u +%Y%m%d%H%M%S`.*
+
+**`pyproject.toml` reverted by a merge.** `google-adk` disappeared and the
+version pins went back to open ranges. Nothing failed, because the running
+image had ADK from a cached Docker layer — a `--no-cache` rebuild or a fresh
+clone would have died on `import google.adk`.
+*Rule: `pyproject.toml` is a shared surface. And rebuild `--no-cache`
+occasionally, because a cached layer hides a broken dependency list for days.*
+
+## Not built
 
 | Item | Lane |
 |---|---|
 | **JD file upload (PDF/DOCX)** — `jd_text` is paste-only | 1 |
-| Org signup — `scripts/seed_dev.py` is the only way to create a company | 1 |
-| Recruiter login UI — the API checks JWTs, the frontend has no login page | 1 |
-| `build_interview_package()` — the last thing lane 1 owes lane 2 | 1 |
 | Rate limiting on the public application endpoint | 1 |
-| Calibration set, 20–30 hand-scored answers (D5) | 1 |
-| Remaining prompt stubs — `interviewer-system`, `score-answer-live`, `score-holistic`, `recruiter-chat` | mixed |
-| `backend/voice/**` — agent entrypoint stubbed only | 2 |
-| Browser proctor detectors | 2 |
-| `recruiter_chat` ADK agent and outreach | 3 |
-- Initial migrations now exist. They still need to be pushed to Supabase before
-  backend routes can return real data.
+| Calibration set, 20-30 hand-scored answers (D5) | 1 |
+| Consent screen copy per region, retention job | 1 |
+| Concurrency and monthly limits recorded but unenforced | 1 / 2 |
+| Browser proctor detectors — `frontend/src/lib/proctor/` empty | 2 |
+| `recruiter_chat` ADK agent, outreach | 3 |
+| Remaining prompt stubs: `interviewer-system`, `score-answer-live`, `score-holistic`, `recruiter-chat` | mixed |
+| **Nothing is deployed** — Google for Jobs needs a public URL, Resend needs a verified domain | shared |
 
-## Not built yet
+## Before writing a query
 
-| Item | Lane | Note |
-|---|---|---|
-| Push migrations to Supabase | shared | run `supabase db push` after linking the project |
-| `backend/agents/question_builder/` | 🔵 | ADK Sequential → Parallel → Loop. Replaces the weakest prompt |
-| Intake flow end to end | 🔵 | apply → parse → hard checks → screen → invite email |
-| Remaining prompt stubs | mixed | `interviewer-system`, `score-answer-live`, `score-holistic`, and `recruiter-chat` |
-| Most router handlers | mixed | intake/interview remain stubbed; insights leaderboard/detail reads are wired |
-| `backend/voice/**` | 🟡 | agent entrypoint stubbed only |
-| Browser proctor detectors | 🟡 | `frontend/src/lib/proctor/` empty |
-| `backend/agents/recruiter_chat/` | 🟢 | ADK LlmAgent + tools + sessions |
-| Frontend routes | all | placeholders |
-| Calibration set | 🔵 | 20–30 hand-scored answers. Required before real candidates — see D5 |
-| Consent screens | 🔵 | see `compliance.md` |
-
-## For lanes 2 and 3
-
-**Read D25-D27 before writing a query.** Every tenant-scoped table carries
-`org_id` and composite foreign keys reject a mismatched row — but that stops
-bad *writes* only. A missing filter on a *read* leaks just as much and the
+**Read D25-D27.** Every tenant-scoped table carries `org_id`, and composite
+foreign keys reject a row whose org disagrees with its parent's. That stops bad
+*writes* only — a missing filter on a *read* leaks just as much and the
 database cannot catch it.
 
-- Every tenant-scoped table carries `org_id`, and composite foreign keys reject
-  a row whose org disagrees with its parent's.
-- `InterviewPackage` and `InterviewResult` both carry `org_id` now.
-- Resolve the org from `current_recruiter`, never from a path parameter.
-- **Lane 2** — `POST /interview/redeem` is stubbed; order of operations in
-  `docs/contracts.md`. The concurrency check belongs here.
-- **Lane 3** — leaderboard and detail endpoints read `interview_score`; the
-  recruiter chat agent and outreach actions are still pending.
+- `InterviewPackage` and `InterviewResult` both carry `org_id`
+- Resolve the org from `current_recruiter`, never from a path parameter
+- The one deliberate exception is `repo.get_job_unscoped()`, used only by the
+  public application form, where the candidate has no account
 
 ## Known constraints
 
@@ -148,11 +134,11 @@ database cannot catch it.
 - **Speech-to-speech means no live diarization** — multi-speaker detection runs
   post-call over recorded tracks
 - **`BackgroundTasks` is in-process** — a restart mid-pipeline loses the work,
-  though the application is now marked `failed` rather than sitting invisibly
+  though the application is marked `failed` rather than sitting invisibly
 - **Question bank builds take ~4 minutes** (11 LLM calls with a revise loop).
   Create jobs before a demo, not during one
-- **Nothing is deployed.** Google for Jobs needs a public URL, and Resend needs
-  a verified domain before it will mail anyone but the account owner
+- **Resend sandbox** delivers only to the account owner until a domain is
+  verified
 
 ## Setup gotchas already hit
 
@@ -160,19 +146,20 @@ database cannot catch it.
   Tools, which on macOS 26.x means a 7.4 GB OS update
 - **Paste keys onto one line** — a wrapped key breaks `docker compose` with
   `invalid environment variable`, and the error does not say which line
-- **`db push --include-all`** when a migration is not the latest by timestamp
+- **`npx supabase migration list` before `db push`** — shows local versus
+  remote, so a skipped migration is visible instead of silently succeeding
 - **`backend/.venv` is Python 3.14, the container is 3.12.** The venv is a fast
-  test loop; the container is the source of truth. Verify there before trusting
+  test loop; the container is the source of truth
+- Supabase rejects `@example.com` addresses as invalid at signup
 
 ## Open questions
 
 - Should the interviewer greet candidates by name? Currently no (D14)
 - Which Gemini Live model to settle on, given the mid-session limits
-- Who owns `interviewer-system.v1.md` — lane 2's prompt, built from lane 1's bank
 - What does a candidate see when an org hits its concurrency limit? It must
   degrade to "try again shortly" with the invite still valid, never "your
   employer is on the free tier" — which means a queue, not a rejection
-- Do we own `verdikt.app`? Both Resend and Google for Jobs need a real domain
+- Do we own a domain? Both Resend and Google for Jobs need one
 
 ## Recently decided
 

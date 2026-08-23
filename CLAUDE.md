@@ -62,9 +62,15 @@ announcing it.
 ## Hard rules
 
 1. **Never edit another lane's folder.** Surface it to the owner instead.
-2. **Five shared surfaces need a heads-up before editing:** `backend/shared/` ·
-   `llm/` · `supabase/migrations/` · `frontend/src/lib/api.ts` ·
-   `frontend/src/components/ui/`
+2. **Six shared surfaces need a heads-up before editing:** `backend/shared/` ·
+   `llm/` · `supabase/migrations/` · `backend/pyproject.toml` ·
+   `frontend/src/lib/api.ts` · `frontend/src/components/ui/`
+
+   `pyproject.toml` is on that list because a merge silently reverted it on
+   2026-08-23, dropping `google-adk` and every version pin. Nothing failed —
+   the running image had the package from a cached Docker layer — so it would
+   have surfaced as a broken build days later, for whoever rebuilt first.
+   Rebuild `--no-cache` occasionally.
 3. **Migrations are additive only**, `YYYYMMDDHHMMSS_lane_what.sql`. Never edit
    a merged one. **Use a real timestamp — `date -u +%Y%m%d%H%M%S` — not a
    rounded one.** Supabase keys migrations by that prefix, so two files sharing

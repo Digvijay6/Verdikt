@@ -7,6 +7,7 @@ import {
   useLocation,
 } from "react-router-dom";
 
+import { ErrorBoundary } from "./components/intake/ErrorBoundary";
 import { MagicNav, type NavItem } from "./components/intake/MagicNav";
 import { AuthProvider, useAuth } from "./lib/auth";
 import ApplicationForm from "./routes/intake/ApplicationForm";
@@ -84,7 +85,8 @@ export default function App() {
         <BrowserRouter>
           <Header />
           <div className="app-page">
-            <Routes>
+            <ErrorBoundary>
+              <Routes>
               <Route path="/" element={<Navigate to="/jobs" replace />} />
 
               <Route path="/login" element={<Login />} />
@@ -133,7 +135,8 @@ export default function App() {
                   </RequireOrg>
                 }
               />
-            </Routes>
+              </Routes>
+            </ErrorBoundary>
           </div>
         </BrowserRouter>
       </AuthProvider>

@@ -83,7 +83,7 @@ export function Tabs({
               {isActive && (
                 <motion.span
                   aria-hidden
-                  layoutId="tab-underlay"
+                  layoutId={`${base}-underlay`}
                   className="folder-shape"
                   transition={{ type: "spring", stiffness: 420, damping: 34 }}
                 />

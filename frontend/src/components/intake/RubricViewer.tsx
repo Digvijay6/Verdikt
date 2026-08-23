@@ -38,21 +38,23 @@ export type Rubric = { competencies: Competency[]; version: string };
 const pct = (n: number) => `${Math.round(n * 100)}%`;
 
 export function RubricViewer({ rubric }: { rubric: Rubric }) {
-  const [open, setOpen] = useState<string | null>(
-    rubric.competencies[0]?.key ?? null,
-  );
+  // The column is jsonb and older rows predate the current shape, so this
+  // cannot assume an array is there. A missing one used to throw during render,
+  // which blanks the whole page rather than this one panel.
+  const competencies = rubric.competencies ?? [];
+  const [open, setOpen] = useState<string | null>(competencies[0]?.key ?? null);
 
   // Should be 1.0. Surfaced rather than silently normalised: a rubric whose
   // weights do not sum is a generation bug, and hiding it means scores are
   // quietly scaled wrong.
-  const total = rubric.competencies.reduce((sum, c) => sum + c.weight, 0);
+  const total = competencies.reduce((sum, c) => sum + c.weight, 0);
   const off = Math.abs(total - 1) > 0.02;
 
   return (
     <div>
       <div className="mb-4 flex flex-wrap items-center gap-2">
         <Pill tone="cool">{rubric.version}</Pill>
-        <Pill>{rubric.competencies.length} competencies</Pill>
+        <Pill>{competencies.length} competencies</Pill>
         <Pill tone={off ? "attention" : "good"}>weights {pct(total)}</Pill>
         {off && (
           <span className="error text-sm">
@@ -62,7 +64,7 @@ export function RubricViewer({ rubric }: { rubric: Rubric }) {
       </div>
 
       <ul className="m-0 list-none space-y-3 p-0">
-        {rubric.competencies.map((c) => {
+        {competencies.map((c) => {
           const isOpen = open === c.key;
           return (
             <li

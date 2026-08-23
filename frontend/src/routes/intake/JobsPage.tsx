@@ -279,7 +279,7 @@ function JobCard({ job, onRebuild }: { job: Job; onRebuild: () => void }) {
           {
             id: "rubric",
             label: "Rubric",
-            badge: job.rubric?.competencies.length,
+            badge: job.rubric?.competencies?.length,
           },
         ]}
       >

@@ -92,9 +92,10 @@ startup, so it looks fine until the first build silently fails.
 
 | Item | Lane |
 |---|---|
-| Org creation + first-membership flow — no way to sign up a company yet | 1 |
+| **JD file upload (PDF/DOCX)** — `jd_text` is paste-only | 1 |
+| Org signup — `scripts/seed_dev.py` is the only way to create a company | 1 |
 | Recruiter login UI — the API checks JWTs, the frontend has no login page | 1 |
-| Concurrency and monthly limits are recorded but nothing enforces them | 1 / 2 |
+| `build_interview_package()` — the last thing lane 1 owes lane 2 | 1 |
 | Rate limiting on the public application endpoint | 1 |
 | Calibration set, 20–30 hand-scored answers (D5) | 1 |
 | Remaining prompt stubs — `interviewer-system`, `score-answer-live`, `score-holistic`, `recruiter-chat` | mixed |
@@ -120,9 +121,12 @@ startup, so it looks fine until the first build silently fails.
 | Calibration set | 🔵 | 20–30 hand-scored answers. Required before real candidates — see D5 |
 | Consent screens | 🔵 | see `compliance.md` |
 
-## Blocking other lanes
+## For lanes 2 and 3
 
-Nothing, but **both lanes must read D25–D27 before writing queries.**
+**Read D25-D27 before writing a query.** Every tenant-scoped table carries
+`org_id` and composite foreign keys reject a mismatched row — but that stops
+bad *writes* only. A missing filter on a *read* leaks just as much and the
+database cannot catch it.
 
 - Every tenant-scoped table carries `org_id`, and composite foreign keys reject
   a row whose org disagrees with its parent's.
@@ -135,41 +139,42 @@ Nothing, but **both lanes must read D25–D27 before writing queries.**
 
 ## Known constraints
 
-- **ADK workflow agents are deprecated** in google-adk 2.7.1 — D22. Contained
-  behind `build_workflow()`.
+- **ADK workflow agents are deprecated** in google-adk 2.7.1 (D22), contained
+  behind `build_workflow()`
 - **Gemini Live mid-session limits** on `gemini-3.1-flash-live-preview`:
   `generate_reply()`, `update_instructions()`, `update_chat_ctx()` do not work
-  mid-session and async function calling is unavailable. The registry points at
-  the 2.5 native-audio model, which has no such limits.
-- **Speech-to-speech means no live diarization.** Multi-speaker detection runs
-  post-call over recorded tracks.
-- **`BackgroundTasks` is in-process.** A restart mid-pipeline loses the work,
-  though the application is now marked `failed` rather than sitting invisibly at
-  `received`.
-- **Resend needs a verified domain** before it delivers to arbitrary addresses.
-- **Supabase free tier pauses after 7 days idle.** Hit the API during any quiet
-  stretch before a demo.
+  mid-session, and async function calling is unavailable. The registry points
+  at the 2.5 native-audio model, which has no such limits
+- **Speech-to-speech means no live diarization** — multi-speaker detection runs
+  post-call over recorded tracks
+- **`BackgroundTasks` is in-process** — a restart mid-pipeline loses the work,
+  though the application is now marked `failed` rather than sitting invisibly
+- **Question bank builds take ~4 minutes** (11 LLM calls with a revise loop).
+  Create jobs before a demo, not during one
+- **Nothing is deployed.** Google for Jobs needs a public URL, and Resend needs
+  a verified domain before it will mail anyone but the account owner
 
 ## Setup gotchas already hit
 
-- **Use `npx supabase@latest`, not Homebrew.** Homebrew wants current Command
-  Line Tools, which on macOS 26.x means a 7.4 GB OS update.
-- **Paste keys onto one line.** A wrapped key breaks `docker compose` with
-  `invalid environment variable`, and the message does not say which line.
-- **`db push --include-all`** is needed when a migration is not the latest by
-  timestamp.
+- **`npx supabase@latest`, not Homebrew** — Homebrew wants current Command Line
+  Tools, which on macOS 26.x means a 7.4 GB OS update
+- **Paste keys onto one line** — a wrapped key breaks `docker compose` with
+  `invalid environment variable`, and the error does not say which line
+- **`db push --include-all`** when a migration is not the latest by timestamp
+- **`backend/.venv` is Python 3.14, the container is 3.12.** The venv is a fast
+  test loop; the container is the source of truth. Verify there before trusting
 
 ## Open questions
 
-- Should the interviewer greet candidates by name? Currently no — D14.
-- Which Gemini Live model to settle on, given the mid-session limits.
-- Who owns `interviewer-system.v1.md` — lane 2's prompt, built from lane 1's bank.
-- What does a candidate see when an org hits its concurrency limit? It has to
-  degrade to "try again shortly" with the invite still valid — never "your
-  employer is on the free tier". That means a queue, not a rejection.
+- Should the interviewer greet candidates by name? Currently no (D14)
+- Which Gemini Live model to settle on, given the mid-session limits
+- Who owns `interviewer-system.v1.md` — lane 2's prompt, built from lane 1's bank
+- What does a candidate see when an org hits its concurrency limit? It must
+  degrade to "try again shortly" with the invite still valid, never "your
+  employer is on the free tier" — which means a queue, not a rejection
+- Do we own `verdikt.app`? Both Resend and Google for Jobs need a real domain
 
 ## Recently decided
 
-D25–D29, all from the multi-tenancy rebuild. Most consequential: **D25**,
-isolation enforced by composite foreign keys rather than by remembering to
-filter.
+D25-D31. Most consequential: **D25** (isolation enforced by the database),
+**D30** (the model gets today's date), **D31** (Google for Jobs, not LinkedIn).

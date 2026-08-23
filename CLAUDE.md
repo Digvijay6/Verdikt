@@ -40,6 +40,25 @@ be inserted at all (D25). That stops bad *writes*; reads still need filtering,
 so every repo function takes `org_id`. Resolve it from the caller's membership,
 never from a URL or a token claim (D27).
 
+## Branches
+
+`main` is shared and moves only through reviewed PRs. Nobody pushes to it.
+
+| Lane | Branch |
+|---|---|
+| 1 — Intake | `intake` |
+| 2 — Interview | `ai-call` |
+| 3 — Insights | tbd |
+
+```bash
+git pull --rebase origin main    # take their work first
+git push                          # your branch, never main
+```
+
+Rebase rather than merge: three people merging produces a history nobody can
+follow. Fetch before assuming local `main` is current — teammates push without
+announcing it.
+
 ## Hard rules
 
 1. **Never edit another lane's folder.** Surface it to the owner instead.

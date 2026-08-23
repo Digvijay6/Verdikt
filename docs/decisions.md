@@ -490,6 +490,67 @@ their rubric/model/prompt provenance.
 v2 composite and never causes automatic rejection. This supersedes the earlier
 unimplemented note about a multiplicative integrity penalty.
 
+## D31 · Google for Jobs, not LinkedIn
+
+**Chosen:** publish `JobPosting` JSON-LD on a server-rendered public page at
+`/j/{job_id}`, discovered through `sitemap.xml`. Free, sanctioned, no gatekeeper.
+
+**Rejected: LinkedIn.** Verified rather than assumed this time.
+- The **Job Posting API** is not open — LinkedIn *"is currently not accepting
+  new partnerships"* for it.
+- **Apply Connect** (the Easy Apply to ATS pipe) requires Talent Solutions
+  Partner status and is *"only available for incorporated companies, not
+  individual developers"*, behind a signed agreement and a relationship manager.
+- **Zapier cannot bridge it.** Its LinkedIn integration is Lead Gen Forms
+  (requires Ads spend) and company-page updates. There are no job-posting
+  triggers or actions. Zapier connects APIs; it cannot open one that is closed.
+
+**Rejected: headless-browser automation of LinkedIn**, including the version
+where the customer supplies their own credentials.
+
+The scraping objection does go away in that design — applicants apply on our
+form, so no third-party PII is harvested. What remains does not:
+
+- LinkedIn's User Agreement prohibits automated access regardless of whose
+  account. A customer can consent to *us* using their account; they cannot
+  consent on LinkedIn's behalf to something LinkedIn forbids. That is precisely
+  what **hiQ Labs lost on**: they won the famous CFAA ruling on public data and
+  still took a $500,000 judgment, a permanent injunction, and an order to
+  destroy all derived source code, on breach of contract. The company no
+  longer exists.
+- It requires storing LinkedIn passwords in **recoverable** form — they have to
+  be replayed at login. That is a larger liability than anything else we hold,
+  resumes included.
+- Most business accounts have 2FA, which breaks the flow or forces us to ask
+  for TOTP seeds, which is worse.
+- Detection restricts **the customer's** account, not ours. Shipping a product
+  whose failure mode is destroying a customer's LinkedIn access ends the
+  relationship on the first incident.
+
+**The decisive argument is not legal, it is arithmetic.** LinkedIn already
+supports "Apply on company website": a recruiter posts the job and pastes our
+apply URL. Applicants land on our form and upload a resume — exactly the flow
+we wanted, with no integration at all. Automation would save the recruiter
+roughly two minutes per posting. Two minutes is not worth our largest security
+liability plus a ban risk aimed at customers.
+
+**Implementation notes**
+- Server-rendered, not SPA-injected. Google can run JavaScript, but its own
+  guidance calls server-rendered the standard approach, and an unindexed job
+  fails silently — there is no error to notice.
+- `validThrough` is mandatory in practice: Google issues a **manual action
+  removing every job on a domain** that accumulates stale undated postings.
+  Jobs default to a 60-day expiry, and closing one expires it immediately.
+- Closed jobs render `noindex` and drop out of the sitemap.
+- The JD is recruiter-supplied text rendered into a public page, so it is
+  escaped before being wrapped in HTML.
+- `indexing_problems()` reports what would prevent indexing, so the recruiter
+  learns from the UI rather than from traffic that never arrives.
+
+**Needs a public URL.** None of this does anything on localhost.
+
+---
+
 ---
 
 ## Provenance of the original plan

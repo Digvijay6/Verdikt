@@ -78,6 +78,19 @@ class QuestionBankStatus(StrEnum):
     FAILED = "failed"
 
 
+class EmploymentType(StrEnum):
+    """Google's vocabulary, used verbatim so the JSON-LD needs no mapping."""
+
+    FULL_TIME = "FULL_TIME"
+    PART_TIME = "PART_TIME"
+    CONTRACTOR = "CONTRACTOR"
+    TEMPORARY = "TEMPORARY"
+    INTERN = "INTERN"
+    VOLUNTEER = "VOLUNTEER"
+    PER_DIEM = "PER_DIEM"
+    OTHER = "OTHER"
+
+
 class JobStatus(StrEnum):
     DRAFT = "draft"
     OPEN = "open"
@@ -99,6 +112,16 @@ class Job(BaseModel):
     # regardless. Closing stops new applications, nothing more.
     status: JobStatus = JobStatus.OPEN
     closed_at: datetime | None = None
+
+    # Public posting fields, distinct from the screening profile. `location` is
+    # where the role is advertised; screening_profile.locations is who gets
+    # filtered out. A remote role can still be advertised as based somewhere.
+    location: str | None = None
+    remote: bool = False
+    employment_type: EmploymentType | None = None
+    # Google removes listings past this date, and penalises a domain whose
+    # stale jobs pile up undated.
+    valid_through: datetime | None = None
 
     screening_profile: ScreeningProfile = ScreeningProfile()
     # Recorded, never enforced. The meaningful human decision is at the
@@ -131,6 +154,9 @@ class JobCreate(BaseModel):
     seniority: str
     jd_text: str
     role_family: str | None = None
+    location: str | None = None
+    remote: bool = False
+    employment_type: EmploymentType | None = None
     # Omit to have Gemini extract the hard requirements from the JD.
     screening_profile: ScreeningProfile | None = None
 

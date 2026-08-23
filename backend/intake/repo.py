@@ -11,7 +11,7 @@ Other lanes read them; if they need a write, they ask.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from shared.db import db
@@ -33,6 +33,11 @@ from shared.models.job import (
     QuestionBankStatus,
     ScreeningProfile,
 )
+
+
+# Mirrors posting.DEFAULT_VALIDITY. A job with no expiry is one Google will
+# eventually issue a manual action over.
+POSTING_VALIDITY = timedelta(days=60)
 
 
 # --- job ------------------------------------------------------------------
@@ -57,6 +62,16 @@ def create_job(
                 "seniority": payload.seniority,
                 "role_family": payload.role_family,
                 "jd_text": payload.jd_text,
+                "location": payload.location,
+                "remote": payload.remote,
+                "employment_type": (
+                    payload.employment_type.value if payload.employment_type else None
+                ),
+                # Never publish a posting without an expiry: Google penalises a
+                # domain whose undated stale jobs accumulate.
+                "valid_through": (
+                    datetime.now(timezone.utc) + POSTING_VALIDITY
+                ).isoformat(),
                 "screening_profile": resolved.model_dump(mode="json"),
                 "screening_profile_source": profile_source.value,
                 "screening_profile_model_id": profile_model_id,
@@ -118,6 +133,26 @@ def update_job(job_id: str, org_id: str, fields: dict[str, Any]) -> None:
         db().table("job").update(fields).eq("id", job_id).eq(
             "org_id", org_id
         ).execute()
+
+
+def open_jobs_for_sitemap() -> list[dict]:
+    """Every open job across every organization.
+
+    Unscoped on purpose, like get_job_unscoped: a sitemap is a public document
+    and a crawler belongs to no tenant. Returns ids and timestamps only —
+    nothing here reveals one customer's hiring to another beyond the postings
+    they have already chosen to publish.
+    """
+    res = (
+        db()
+        .table("job")
+        .select("id,updated_at")
+        .eq("status", JobStatus.OPEN.value)
+        .order("updated_at", desc=True)
+        .limit(5000)
+        .execute()
+    )
+    return res.data
 
 
 def close_job(job_id: str, org_id: str) -> None:

@@ -58,7 +58,7 @@
 
      Blur is zero throughout. A blurred edge would smear the outline into the
      fill and the whole thing collapses back into an ordinary drop shadow. */
-  --color-backing: #aeaea7;
+  --color-backing: #5f5f5f;
 
   --shadow-card:
     10px 12px 0 0 var(--color-backing),

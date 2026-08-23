@@ -10,7 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from shared.config import get_settings
 
-from .routers import insights, intake, interview
+from .routers import auth, insights, intake, interview, public
 
 app = FastAPI(
     title="Verdikt API",
@@ -26,9 +26,11 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.include_router(auth.router)
 app.include_router(intake.router)
 app.include_router(interview.router)
 app.include_router(insights.router)
+app.include_router(public.router)
 
 
 @app.get("/health", tags=["meta"])

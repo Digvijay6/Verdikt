@@ -71,11 +71,67 @@ class Question(BaseModel):
     follow_up_guidance: str | None = None
 
 
+class CompetencyKind(StrEnum):
+    TECHNICAL = "technical"
+    BEHAVIORAL = "behavioral"
+
+
+class Competency(BaseModel):
+    """One thing the role requires, and how to score it.
+
+    The competency and its anchors are fixed for every candidate; the probe used
+    to elicit it is not. That split is what lets two people be asked different
+    questions and still land on the same scale.
+    """
+
+    key: str = Field(description="stable id, e.g. 'message_delivery_semantics'")
+    name: str
+    why: str = Field(description="What a strong answer demonstrates")
+    kind: CompetencyKind
+    must_have: bool = Field(
+        False, description="Scoring <=2 here caps the overall score."
+    )
+    weight: float = Field(gt=0.0, le=1.0, description="Share of the overall score")
+    dimensions: list[RubricDimension] = Field(
+        description="Anchors, copied verbatim onto every question targeting this"
+    )
+
+
+class JobRubric(BaseModel):
+    """The scoring frame. Generated once per job, identical for everyone.
+
+    Anchors here must be scorable **without knowing which probe produced the
+    answer**. "Explains a specific failure mode and how they handled it" works
+    for a notification consumer and a payment consumer alike; "mentions
+    idempotency keys" only works for one, and would penalise the other for a
+    correct answer about their own system.
+    """
+
+    competencies: list[Competency]
+    version: str = "v1"
+
+    def by_key(self, key: str) -> Competency | None:
+        return next((c for c in self.competencies if c.key == key), None)
+
+
 class QuestionBankStatus(StrEnum):
     PENDING = "pending"
     BUILDING = "building"
     READY = "ready"
     FAILED = "failed"
+
+
+class EmploymentType(StrEnum):
+    """Google's vocabulary, used verbatim so the JSON-LD needs no mapping."""
+
+    FULL_TIME = "FULL_TIME"
+    PART_TIME = "PART_TIME"
+    CONTRACTOR = "CONTRACTOR"
+    TEMPORARY = "TEMPORARY"
+    INTERN = "INTERN"
+    VOLUNTEER = "VOLUNTEER"
+    PER_DIEM = "PER_DIEM"
+    OTHER = "OTHER"
 
 
 class JobStatus(StrEnum):
@@ -100,6 +156,16 @@ class Job(BaseModel):
     status: JobStatus = JobStatus.OPEN
     closed_at: datetime | None = None
 
+    # Public posting fields, distinct from the screening profile. `location` is
+    # where the role is advertised; screening_profile.locations is who gets
+    # filtered out. A remote role can still be advertised as based somewhere.
+    location: str | None = None
+    remote: bool = False
+    employment_type: EmploymentType | None = None
+    # Google removes listings past this date, and penalises a domain whose
+    # stale jobs pile up undated.
+    valid_through: datetime | None = None
+
     screening_profile: ScreeningProfile = ScreeningProfile()
     # Recorded, never enforced. The meaningful human decision is at the
     # leaderboard; blocking the pipeline on an approval click would defeat its
@@ -110,12 +176,21 @@ class Job(BaseModel):
     screening_profile_reviewed_at: datetime | None = None
     screening_profile_reviewed_by: str | None = None
 
-    question_bank: list[Question] | None = None
+    # The scoring frame, fixed for every candidate. Probes are generated per
+    # candidate and live on application.questions.
+    rubric: JobRubric | None = None
     question_bank_status: QuestionBankStatus = QuestionBankStatus.PENDING
     question_bank_error: str | None = None
 
-    # Bump whenever the bank or its anchors change — lane 2 scores against those
-    # anchors, so a change here changes scores.
+    # Deprecated. Held one finished question set shared by every candidate,
+    # which leaked and could not reach what any individual had actually built.
+    # Left on the model only until ai-call moves to build_interview_package().
+    question_bank: list[Question] | None = None
+
+    # Bump whenever the rubric's anchors change — lane 2 scores against those
+    # anchors, so a change here changes scores. Candidates invited before a
+    # rebuild keep questions written against the old ones, which is exactly why
+    # the version has to travel with the score.
     rubric_version: str = "v1"
 
     created_by: str | None = None
@@ -131,6 +206,9 @@ class JobCreate(BaseModel):
     seniority: str
     jd_text: str
     role_family: str | None = None
+    location: str | None = None
+    remote: bool = False
+    employment_type: EmploymentType | None = None
     # Omit to have Gemini extract the hard requirements from the JD.
     screening_profile: ScreeningProfile | None = None
 

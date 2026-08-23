@@ -1,6 +1,6 @@
 {
   "$comment": "Single source of truth for which prompt and model runs each task. Swapping a model or bumping a prompt is an edit here, not a code change. Every task's model_id and version get persisted with whatever the call produced (D5). Nested blocks are ADK workflow sub-agents, addressed with dotted keys: llm.run('question-builder.validator', ...).",
-  "$models": "Verified against a live API key on 2026-08-22, not taken from documentation. gemini-3.7-flash is GA, fast (~2s) and was accurate in a structured-output probe. gemini-3.1-pro-preview is slower (~4.5s) and carries preview risk, so it is used only where reasoning depth genuinely pays: decisions about a person, and the anchors lane 2 scores against. If a preview model is withdrawn mid-hackathon, gemini-3.7-flash is the drop-in replacement everywhere. Note gemini-3.6-flash failed the probe by extracting a person's name as a skill.",
+  "$models": "Verified against a live API key on 2026-08-22, not taken from documentation. gemini-3.7-flash is GA, fast (~2s) and was accurate in a structured-output probe. gemini-3.1-pro-preview is slower (~4.5s) and carries preview risk, so it is used only where reasoning depth genuinely pays: decisions about a person, the anchors lane 2 scores against, and the per-candidate questions written from those anchors. If a preview model is withdrawn mid-hackathon, gemini-3.7-flash is the drop-in replacement everywhere. Note gemini-3.6-flash failed the probe by extracting a person's name as a skill.",
   "tasks": {
     "resume-parse": {
       "prompt": "resume-parse.v2.md",
@@ -17,45 +17,33 @@
       "model": "gemini-3.1-pro-preview",
       "version": "v1"
     },
-
     "question-builder": {
       "competency-extractor": {
         "prompt": "qb/competency-extractor.v1.md",
         "model": "gemini-3.1-pro-preview",
         "version": "v1"
       },
-      "technical-writer": {
-        "prompt": "qb/technical-writer.v1.md",
-        "model": "gemini-3.7-flash",
-        "version": "v1"
-      },
-      "behavioral-writer": {
-        "prompt": "qb/behavioral-writer.v1.md",
-        "model": "gemini-3.7-flash",
-        "version": "v1"
-      },
-      "poison-writer": {
-        "prompt": "qb/poison-writer.v1.md",
-        "model": "gemini-3.7-flash",
-        "version": "v1"
-      },
       "rubric-writer": {
-        "prompt": "qb/rubric-writer.v1.md",
+        "prompt": "qb/rubric-writer.v2.md",
         "model": "gemini-3.1-pro-preview",
-        "version": "v1"
+        "version": "v2"
       },
       "validator": {
-        "prompt": "qb/validator.v1.md",
+        "prompt": "qb/validator.v2.md",
         "model": "gemini-3.1-pro-preview",
-        "version": "v1"
+        "version": "v2"
       },
       "reviser": {
-        "prompt": "qb/reviser.v1.md",
+        "prompt": "qb/reviser.v2.md",
         "model": "gemini-3.1-pro-preview",
-        "version": "v1"
+        "version": "v2"
       }
     },
-
+    "candidate-questions": {
+      "prompt": "candidate-questions.v1.md",
+      "model": "gemini-3.1-pro-preview",
+      "version": "v1"
+    },
     "interviewer-system": {
       "prompt": "interviewer-system.v1.md",
       "model": "gemini-2.5-flash-native-audio-preview-12-2025",
@@ -67,9 +55,9 @@
       "version": "v1"
     },
     "score-answer": {
-      "prompt": "score-answer.v1.md",
+      "prompt": "score-answer.v2.md",
       "model": "gemini-3.1-pro-preview",
-      "version": "v1"
+      "version": "v2"
     },
     "score-holistic": {
       "prompt": "score-holistic.v1.md",
@@ -79,6 +67,16 @@
     "recruiter-chat": {
       "prompt": "recruiter-chat.v1.md",
       "model": "gemini-3.1-pro-preview",
+      "version": "v1"
+    },
+    "candidate-evidence": {
+      "prompt": "candidate-evidence.v3.md",
+      "model": "gemini-3.7-flash",
+      "version": "v3"
+    },
+    "candidate-evidence-format": {
+      "prompt": "candidate-evidence-format.v1.md",
+      "model": "gemini-3.7-flash",
       "version": "v1"
     }
   }

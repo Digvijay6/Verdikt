@@ -19,6 +19,11 @@ class Settings(BaseSettings):
     # project still issues HS256 tokens. See api/deps.py.
     supabase_jwt_secret: str | None = None
 
+    # Optional. Unauthenticated GitHub is 60 requests/hour, which a single
+    # candidate's evidence run can exhaust; a token raises it to 5000 and
+    # costs nothing. Needs no scopes - it only reads public data.
+    github_token: str | None = None
+
     # Gemini
     gemini_api_key: str
 
@@ -27,9 +32,22 @@ class Settings(BaseSettings):
     livekit_api_key: str
     livekit_api_secret: str
 
-    # Email
+    # Email. Resend is the real path; SMTP is a fallback that exists only
+    # until a sending domain is verified, because unverified Resend delivers
+    # to the account owner's address alone - fine for development, useless for
+    # a demo where someone types their own address.
+    email_provider: str = "resend"
+
     resend_api_key: str
-    from_email: str = "interviews@verdikt.app"
+    from_email: str = "onboarding@resend.dev"
+
+    smtp_host: str | None = None
+    smtp_port: int = 587
+    smtp_user: str | None = None
+    # Gmail needs an app-specific password, not the account password, and
+    # requires 2FA to be enabled before one can be created.
+    smtp_password: str | None = None
+    smtp_from: str | None = None
 
     # Invite links
     app_base_url: str = "http://localhost:5173"

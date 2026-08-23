@@ -107,3 +107,21 @@ details { margin: 0.5rem 0; }
 summary { cursor: pointer; color: var(--muted); font-size: 0.9rem; }
 ul { margin: 0.4rem 0; padding-left: 1.1rem; }
 a { color: inherit; }
+
+/* Signed-in chrome. Deliberately minimal — the real UI is a later decision. */
+.topbar {
+  display: flex;
+  align-items: center;
+  gap: 0.9rem;
+  padding: 0.7rem 1.25rem;
+  border-bottom: 1px solid var(--line);
+}
+.topbar .brand {
+  font-weight: 600;
+  text-decoration: none;
+  margin-right: auto;
+}
+.topbar button { padding: 0.35rem 0.7rem; font-size: 0.9rem; }
+
+/* Auth forms read better narrow than the full content width. */
+.wrap.narrow { max-width: 24rem; }

@@ -179,7 +179,11 @@ Not forgotten, not in scope for the hackathon:
 - Tier 2 extension and Tier 3 native proctoring client.
 - Outcome loop — tying scores to 30/60/90-day performance.
 
-## D16 · Question bank is generated once per job
+## D16 · Question bank is generated once per job — SUPERSEDED by D35
+
+**Superseded 2026-08-23.** The reasoning below is sound about *what* has to stay
+constant and wrong about *which part of the interview that is*. Kept because the
+comparability argument still applies — D35 satisfies it differently.
 
 **Chosen:** one bank per job. Every candidate for a role gets the identical
 questions and the identical rubric.
@@ -439,6 +443,303 @@ supplied explicitly. The date is the obvious one; it will not be the last.
 **Prompt bumped to `resume-parse.v2.md`** rather than edited in place, per D5 —
 years computed under v1 are not comparable to v2, and the version stamped on
 each application is what makes that visible.
+
+---
+
+## D31 · Scores get a table, explanations stay in the contract JSON
+
+**Chosen:** post-call scoring writes one `interview_score` row per interview.
+The table carries rankable summary columns (`overall`, `display_score`,
+`recommendation`, `integrity`, provenance) and the full
+`InterviewResult` JSON.
+
+**Rejected:** keeping scores only as columns on `interview`, and rejected
+fully normalising every dimension/evidence quote into SQL tables.
+
+**Why:** the leaderboard needs cheap, indexed reads over scores by
+`(org_id, job_id)`, while the recruiter detail/chat needs the exact structured
+contract with evidence quotes. Fully normalising the entire score tree would
+make every contract change a migration and would split the legally important
+explanation across many rows. Storing the full contract beside indexed summary
+columns gives Lane 3 fast ranking without losing auditability.
+
+**Tenant rule:** `interview_score` carries `org_id` and uses composite foreign
+keys back to `interview`, `application`, and `job`, matching D25.
+
+---
+
+## D32 · Fixed 0-100 rubric, deterministic aggregation
+
+**Chosen:** `score-answer.v2` extracts five fixed measurements: technical
+accuracy, project depth, ownership, follow-up resilience, and consistency.
+Plain Python applies the ownership cap, consistency penalties, seniority
+weights, must-have cap, and human-review triggers. The leaderboard ranks on the
+resulting 0-100 `composite_score`.
+
+**Rejected:** asking Gemini for the final composite or review decision, and
+keeping the earlier 55% per-question / 30% holistic / 15% role-fit formula as a
+second ranking score.
+
+**Why:** fixed anchors make candidates comparable; deterministic arithmetic
+makes the outcome reproducible and auditable. Two simultaneous composite
+formulas would let the detail page and leaderboard disagree. Holistic and role
+fit remain available as explanatory v1 compatibility data but do not alter a
+v2 composite.
+
+**Compatibility:** `overall` remains as `1 + 4 * composite / 100`, allowing old
+1-5 consumers and v1 rows to remain readable. New rows carry both values and
+their rubric/model/prompt provenance.
+
+**Integrity:** integrity evidence triggers human review but does not reduce the
+v2 composite and never causes automatic rejection. This supersedes the earlier
+unimplemented note about a multiplicative integrity penalty.
+
+## D33 · Google for Jobs, not LinkedIn
+
+**Chosen:** publish `JobPosting` JSON-LD on a server-rendered public page at
+`/j/{job_id}`, discovered through `sitemap.xml`. Free, sanctioned, no gatekeeper.
+
+**Rejected: LinkedIn.** Verified rather than assumed this time.
+- The **Job Posting API** is not open — LinkedIn *"is currently not accepting
+  new partnerships"* for it.
+- **Apply Connect** (the Easy Apply to ATS pipe) requires Talent Solutions
+  Partner status and is *"only available for incorporated companies, not
+  individual developers"*, behind a signed agreement and a relationship manager.
+- **Zapier cannot bridge it.** Its LinkedIn integration is Lead Gen Forms
+  (requires Ads spend) and company-page updates. There are no job-posting
+  triggers or actions. Zapier connects APIs; it cannot open one that is closed.
+
+**Rejected: headless-browser automation of LinkedIn**, including the version
+where the customer supplies their own credentials.
+
+The scraping objection does go away in that design — applicants apply on our
+form, so no third-party PII is harvested. What remains does not:
+
+- LinkedIn's User Agreement prohibits automated access regardless of whose
+  account. A customer can consent to *us* using their account; they cannot
+  consent on LinkedIn's behalf to something LinkedIn forbids. That is precisely
+  what **hiQ Labs lost on**: they won the famous CFAA ruling on public data and
+  still took a $500,000 judgment, a permanent injunction, and an order to
+  destroy all derived source code, on breach of contract. The company no
+  longer exists.
+- It requires storing LinkedIn passwords in **recoverable** form — they have to
+  be replayed at login. That is a larger liability than anything else we hold,
+  resumes included.
+- Most business accounts have 2FA, which breaks the flow or forces us to ask
+  for TOTP seeds, which is worse.
+- Detection restricts **the customer's** account, not ours. Shipping a product
+  whose failure mode is destroying a customer's LinkedIn access ends the
+  relationship on the first incident.
+
+**The decisive argument is not legal, it is arithmetic.** LinkedIn already
+supports "Apply on company website": a recruiter posts the job and pastes our
+apply URL. Applicants land on our form and upload a resume — exactly the flow
+we wanted, with no integration at all. Automation would save the recruiter
+roughly two minutes per posting. Two minutes is not worth our largest security
+liability plus a ban risk aimed at customers.
+
+**Implementation notes**
+- Server-rendered, not SPA-injected. Google can run JavaScript, but its own
+  guidance calls server-rendered the standard approach, and an unindexed job
+  fails silently — there is no error to notice.
+- `validThrough` is mandatory in practice: Google issues a **manual action
+  removing every job on a domain** that accumulates stale undated postings.
+  Jobs default to a 60-day expiry, and closing one expires it immediately.
+- Closed jobs render `noindex` and drop out of the sitemap.
+- The JD is recruiter-supplied text rendered into a public page, so it is
+  escaped before being wrapped in HTML.
+- `indexing_problems()` reports what would prevent indexing, so the recruiter
+  learns from the UI rather than from traffic that never arrives.
+
+**Needs a public URL.** None of this does anything on localhost.
+
+---
+
+## D34 · Verify claims from links candidates give us; never source strangers
+
+**Chosen:** an ADK agent that checks a candidate's claims against the GitHub
+profile **they put on their own application**. Verification, not sourcing.
+
+**Rejected: crawling GitHub to find candidates.** GitHub's Acceptable Use
+Policy, section 7, closes the API loophole explicitly:
+
+> "You may not use information from the Service (whether scraped, **collected
+> through our API**, or obtained otherwise) for spamming purposes, including for
+> the purposes of sending unsolicited emails to users or selling personal
+> information, **such as to recruiters, headhunters, and job boards**."
+
+That is this product's exact use case. Using their API is the same violation as
+scraping — they wrote the clause to cover both.
+
+**Also rejected: fetching LinkedIn to verify employment.** Same wall as D31.
+Their User Agreement prohibits automated access, and the candidate consenting to
+*us* does not waive terms *they* agreed to.
+
+**GDPR, separately:** building profiles from crawled data is processing personal
+data. Article 14 requires notifying each person within a month, and it applies
+to public data. Links a candidate hands you on an application are a different
+basis entirely.
+
+## The four verdicts
+
+| Finding | Effect |
+|---|---|
+| `supported` — direct evidence for the claim | raises confidence |
+| `related` — adjacent work in the same domain | raises it modestly |
+| `contradicted` — evidence conflicts with the claim | lowers it |
+| **`not_found` — nothing either way** | **changes nothing** |
+
+`related` was added in prompt v3 because the other three lose real signal. A
+claim about private work can **never** be `supported` — the artifact is not
+public. But someone who has built a payment gateway of their own is a more
+plausible author of one at work than someone with no payments code at all.
+Collapsing that into `not_found` throws away corroboration.
+
+It is corroboration, never proof, and the `detail` must convey strength: "a
+200-line tutorial integration" and "300 commits over two years" are both
+`related` to a work claim, and a recruiter needs to see which. The prompt also
+guards against stretching it — a React todo app is not `related` to a claim
+about distributed systems.
+
+Absence of public evidence is not evidence of absence. Most professional work
+lives in private company repositories, so penalising an empty GitHub punishes
+people for where their best work happens to sit — usually behind an employer's
+firewall.
+
+The same logic is why LinkedIn verification would have been unfair even if it
+were permitted: penalising an unverifiable employment claim hits people with no
+LinkedIn, private profiles, stale profiles, or from regions where it is not
+dominant.
+
+`contradicted` is a deliberately high bar, and **prompt v2 narrowed it
+further after a name-collision problem was spotted**.
+
+A repository may only contradict a claim if **the candidate named that
+repository**. Otherwise what was found is a *different artifact*, and a
+different artifact cannot contradict anything.
+
+The failure this prevents: someone builds a real payments service at work
+(private, substantial) and also has a small personal `payment-gateway` repo
+they wrote while learning. The names collide, the agent judges the work claim by
+the hobby repo, and an honest candidate loses points for having practised. Given
+how generic project names are — `chat-app`, `dashboard`, `job-portal` — this is
+likely rather than hypothetical.
+
+So the rule is now:
+
+| Claim shape | Can it be contradicted? |
+|---|---|
+| Names a specific repo, and that repo is not what they described | yes |
+| Work at a company, similar-sounding personal repo found | **never** — private work is not on GitHub by definition |
+| A skill in general ("knows Kafka") | **never** — absence cannot disprove a skill |
+
+Enforced in both stages: the agent prompt and the formatter, so a stray
+`contradicted` cannot slip through the second pass either.
+
+**Failures map to `not_found` too.** A rate limit, a renamed account, an
+outage — the tools say so explicitly in their output, so the model cannot infer
+a negative from a technical problem.
+
+## Why this is the right ADK use
+
+`question_builder` (D9) is a fixed pipeline: the trajectory never varies, only
+the content does. Evidence gathering is genuinely agentic — each finding decides
+the next call. A repo whose name matches a claimed technology is worth opening;
+a two-commit fork is not. That is what tools and a model-driven trajectory are
+for.
+
+**Implementation notes**
+- Budget of 12 tool calls, enforced in the tools themselves via session state.
+  Hitting it is normal completion, not failure.
+- ADK cannot combine `output_schema` with tools, so the agent explores freely
+  and a second typed call structures its notes. Gemini's `response_schema`
+  guarantees the shape rather than hoping for well-formed JSON.
+- `httpx`, not `urllib`: urllib uses the OS trust store, which is absent on some
+  Python installs and fails every HTTPS call. That looked exactly like a
+  candidate having no GitHub profile.
+- Evidence is passed to the screen as **context to reason about**, never as a
+  score adjustment, so the recruiter sees the same findings and can trace a
+  decision to the repository behind it.
+- `GITHUB_TOKEN` is optional but wanted: unauthenticated is 60 requests/hour,
+  which one candidate can exhaust.
+
+**Proved itself on the first real run.** The screen had earlier rejected a
+candidate partly for "Python absent from the resume". The agent found a 106 KB
+FastAPI-and-PostgreSQL repository under a link that candidate had supplied.
+
+## D35 · Fixed rubric per job, questions generated per candidate
+
+**Supersedes D16.**
+
+**Chosen:** the job carries competencies, BARS anchors and weights. The probes
+that elicit them are written per candidate at invite time, from `job.rubric`
+plus their parsed resume.
+
+**Rejected:** one fixed question bank shared by every applicant (D16).
+
+**Why the reversal.** D16 was right that a leaderboard needs an invariant. It
+picked the wrong one. The invariant a leaderboard needs is **the scoring frame,
+not the question wording**.
+
+| Fixed per job | Generated per candidate |
+|---|---|
+| competencies | the probe that elicits each one |
+| BARS anchors, 1-5 | the poison question |
+| dimension weights | drawn from their resume + the JD |
+| `rubric_version` | |
+
+Three problems with a fixed bank, in the order they bite:
+
+1. **It leaks.** A bank is posted online after a handful of candidates. Later
+   applicants arrive rehearsed, and the scores keep looking reasonable while
+   measuring preparation instead of ability.
+2. **Generic questions have a signal ceiling.** "How have you used Kafka?" gets
+   a textbook answer from anyone who read the docs. It cannot separate
+   at-least-once notification delivery, where a duplicate is harmless, from
+   exactly-once payment processing, where it is not. Those are different
+   competencies wearing the same word.
+3. **The leaderboard ranks interview performance.** If the questions do not
+   reach what the candidate actually built, the score measures the wrong thing.
+
+**What keeps scores comparable.** Two candidates are asked different questions
+about the same competency and scored against byte-identical anchors. The model
+writes the probe and tags a competency; **we** attach that competency's
+dimensions by lookup in `intake/questions.py`. Asking the model to copy anchors
+would eventually score one candidate against subtly different ones, which is the
+exact failure this design exists to prevent.
+
+**The constraint that makes it work — portable anchors.** An anchor must be
+scorable without knowing which probe produced the answer.
+
+- Portable: *"Explains a specific failure mode and how they handled it."*
+- Not portable: *"Mentions idempotency keys"* — correct for payments, wrong for
+  notifications, and it would mark the notification candidate down for a correct
+  answer about their own system.
+
+So no anchor may name a technology, vendor or pattern. That constraint lands
+entirely on `qb/rubric-writer.v2.md` and is enforced by `qb/validator.v2.md`.
+**Verified 2026-08-23** on a live build: 7 competencies, 105 anchors, zero
+technology mentions; two contrasting resumes produced entirely different probes
+with identical dimensions on all 7 shared competencies, and different poison
+questions.
+
+**Generation happens at invite, not at redeem.** The candidate never waits on a
+model call after clicking their link, and a dropped connection rejoining gets
+the identical set (D12).
+
+**A generation failure never blocks the invite.** It is recorded on
+`application.questions_error` and the invite goes out anyway. Lane 2 falls back
+to the job-wide bank; an unsendable invite is worse than a late question set.
+
+**The cost, stated plainly.** Nobody reviews 2,000 question sets. Today a
+recruiter reads one bank and judges it; per-candidate they cannot. Quality
+control moves onto the rubric — which *is* reviewable, and which is what
+determines scores — plus the generation prompt. The questions themselves become
+unreviewed. That is a real reduction in oversight, accepted knowingly.
+
+**One poison question per candidate**, invented to fit their stack. A fixed one
+leaks first, being the most memorable question in the interview. Still never
+auto-rejects (hard rule 9).
 
 ---
 

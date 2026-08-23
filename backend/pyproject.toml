@@ -13,11 +13,16 @@ requires-python = ">=3.12,<3.14"
 dependencies = [
     "fastapi~=0.141",
     "uvicorn[standard]~=0.52",
+    # [email] pulls email-validator, which EmailStr needs at import time.
     "pydantic[email]~=2.13",
     "pydantic-settings~=2.15",
+    # [crypto] is required to verify Supabase's ES256 tokens (D23).
     "pyjwt[crypto]~=2.13",
     "supabase~=2.31",
     "google-genai~=2.19",
+    # Lane 1's question_builder workflow (D9). Importing intake.question_builder
+    # fails without it, which a cached Docker layer will hide until someone
+    # rebuilds clean.
     "google-adk~=2.7",
     "resend~=2.39",
     "python-multipart~=0.0.32",

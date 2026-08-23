@@ -13,8 +13,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from enum import StrEnum
 
-from shared.models.job import QuestionType
-from shared.models.job import Question
+from shared.models.job import Question, QuestionType
 
 
 class Phase(StrEnum):

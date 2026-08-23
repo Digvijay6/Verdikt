@@ -50,16 +50,45 @@ def _requirements_brief(job: Job, today: date) -> str:
 
 
 def screen_application(
-    resume: ParsedResume, job: Job, today: date | None = None
+    resume: ParsedResume,
+    job: Job,
+    today: date | None = None,
+    evidence: object | None = None,
 ) -> tuple[ScreeningDecision, Provenance]:
+    """`evidence` is the GitHub verification, when there was a link to check.
+
+    Passed as context for the model to weigh, never as a score adjustment. The
+    recruiter sees the same findings in the review queue, so a decision that
+    leaned on evidence can be traced to the repository it came from.
+    """
+    content = (
+        "Candidate resume, as structured data:\n\n"
+        + resume.model_dump_json(indent=2)
+    )
+    if evidence is not None and not getattr(evidence, "checked", True):
+        # Say nothing to the model rather than hand it an empty findings list,
+        # which reads as "we looked and there was nothing there".
+        evidence = None
+    if evidence is not None:
+        content += (
+            "\n\n## Verified evidence from the GitHub profile they supplied\n\n"
+            + evidence.model_dump_json(indent=2)
+            + "\n\nHow to read the verdicts:\n"
+            "- `supported`: direct evidence for the claim. Raise confidence.\n"
+            "- `related`: adjacent work in the same domain. The claim is more "
+            "plausible, though unproven. Raise confidence modestly, and weigh "
+            "the detail - a tutorial project is weaker than a sustained one.\n"
+            "- `contradicted`: evidence conflicts with the claim. Lower it.\n"
+            "- `not_found`: nothing either way. **Neutral.** NOT evidence against "
+            "the claim - most professional work sits in private repositories, so "
+            "absence says nothing about ability."
+        )
     return run(
         "screen-application",
         ScreeningDecision,
-        # Untrusted. The candidate wrote this.
-        user_content=(
-            "Candidate resume, as structured data:\n\n"
-            + resume.model_dump_json(indent=2)
-        ),
+        # Untrusted. The candidate wrote the resume, and README content in the
+        # evidence is theirs too.
+        user_content=content,
         # Trusted. The recruiter wrote this, plus a date the model cannot know.
         extra_instructions=_requirements_brief(job, today or date.today()),
     )

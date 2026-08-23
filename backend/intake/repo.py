@@ -11,7 +11,7 @@ Other lanes read them; if they need a write, they ask.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from shared.db import db
@@ -27,12 +27,18 @@ from shared.models.job import (
     Job,
     JobCreate,
     JobPipelineStats,
+    JobRubric,
     JobStatus,
     ProfileSource,
     Question,
     QuestionBankStatus,
     ScreeningProfile,
 )
+
+
+# Mirrors posting.DEFAULT_VALIDITY. A job with no expiry is one Google will
+# eventually issue a manual action over.
+POSTING_VALIDITY = timedelta(days=60)
 
 
 # --- job ------------------------------------------------------------------
@@ -57,6 +63,16 @@ def create_job(
                 "seniority": payload.seniority,
                 "role_family": payload.role_family,
                 "jd_text": payload.jd_text,
+                "location": payload.location,
+                "remote": payload.remote,
+                "employment_type": (
+                    payload.employment_type.value if payload.employment_type else None
+                ),
+                # Never publish a posting without an expiry: Google penalises a
+                # domain whose undated stale jobs accumulate.
+                "valid_through": (
+                    datetime.now(timezone.utc) + POSTING_VALIDITY
+                ).isoformat(),
                 "screening_profile": resolved.model_dump(mode="json"),
                 "screening_profile_source": profile_source.value,
                 "screening_profile_model_id": profile_model_id,
@@ -120,6 +136,26 @@ def update_job(job_id: str, org_id: str, fields: dict[str, Any]) -> None:
         ).execute()
 
 
+def open_jobs_for_sitemap() -> list[dict]:
+    """Every open job across every organization.
+
+    Unscoped on purpose, like get_job_unscoped: a sitemap is a public document
+    and a crawler belongs to no tenant. Returns ids and timestamps only —
+    nothing here reveals one customer's hiring to another beyond the postings
+    they have already chosen to publish.
+    """
+    res = (
+        db()
+        .table("job")
+        .select("id,updated_at")
+        .eq("status", JobStatus.OPEN.value)
+        .order("updated_at", desc=True)
+        .limit(5000)
+        .execute()
+    )
+    return res.data
+
+
 def close_job(job_id: str, org_id: str) -> None:
     """Stops new applications. Everything already collected stays."""
     db().table("job").update(
@@ -138,15 +174,19 @@ def set_question_bank_status(
     ).eq("id", job_id).eq("org_id", org_id).execute()
 
 
-def save_question_bank(
-    job_id: str, org_id: str, questions: list[Question], rubric_version: str
-) -> None:
+def save_rubric(job_id: str, org_id: str, rubric: JobRubric) -> None:
+    """The job's scoring frame. Questions are generated per candidate against it.
+
+    `question_bank` is deliberately left untouched and unused (D35). A job that
+    still holds an old bank keeps it as history; nothing reads it once a rubric
+    exists.
+    """
     db().table("job").update(
         {
-            "question_bank": [q.model_dump(mode="json") for q in questions],
+            "rubric": rubric.model_dump(mode="json"),
+            "rubric_version": rubric.version,
             "question_bank_status": QuestionBankStatus.READY.value,
             "question_bank_error": None,
-            "rubric_version": rubric_version,
         }
     ).eq("id", job_id).eq("org_id", org_id).execute()
 
@@ -276,6 +316,13 @@ def create_application(
                 "screening": None,
                 "screening_model_id": None,
                 "screening_prompt_version": None,
+                # Questions are written from the resume, so they are stale for
+                # exactly the same reason the screening decision is.
+                "questions": None,
+                "questions_model_id": None,
+                "questions_prompt_version": None,
+                "questions_rubric_version": None,
+                "questions_error": None,
                 "decided_by": None,
                 "decided_at": None,
                 "decision_note": None,
@@ -404,6 +451,45 @@ def save_screening(
             "status": status.value,
         }
     ).eq("id", application_id).eq("org_id", org_id).execute()
+
+
+def save_questions(
+    application_id: str,
+    org_id: str,
+    questions: list[Question],
+    model_id: str,
+    prompt_version: str,
+    rubric_version: str,
+) -> None:
+    """This candidate's probes, with the provenance that produced them.
+
+    Same statement, same reason as the screening decision: a question set whose
+    model and prompt are unknown cannot be compared to any other.
+
+    `rubric_version` is stored here rather than read from the job at redeem
+    because these questions carry a frozen copy of that version's anchors. A
+    rebuild between invite and redeem moves the job's version but not theirs.
+    """
+    db().table("application").update(
+        {
+            "questions": [q.model_dump(mode="json") for q in questions],
+            "questions_model_id": model_id,
+            "questions_prompt_version": prompt_version,
+            "questions_rubric_version": rubric_version,
+            "questions_error": None,
+        }
+    ).eq("id", application_id).eq("org_id", org_id).execute()
+
+
+def save_questions_error(application_id: str, org_id: str, error: str) -> None:
+    """Generation failed. The invite still goes out (D35).
+
+    Recorded rather than raised so a recruiter can see why an interview will run
+    on fallback questions, instead of finding out from the transcript.
+    """
+    db().table("application").update({"questions_error": error[:500]}).eq(
+        "id", application_id
+    ).eq("org_id", org_id).execute()
 
 
 # --- invites --------------------------------------------------------------

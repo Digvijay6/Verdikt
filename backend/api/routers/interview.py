@@ -109,7 +109,7 @@ def redeem(body: RedeemRequest) -> RedeemResponse:
     # 1. Look up the invite by token hash
     invite_result = supabase.table("interview_invite").select(
         "*"
-    ).eq("token_hash", token_hash).single().execute()
+    ).eq("token_hash", token_hash).limit(1).execute()
 
     if not invite_result.data:
         raise HTTPException(

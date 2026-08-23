@@ -10,7 +10,14 @@
  * the resulting JWT.
  */
 
-import { createContext, useContext, useEffect, useMemo, useState } from "react";
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import type { Session } from "@supabase/supabase-js";
 
 import { api } from "./api";
@@ -42,6 +49,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [org, setOrg] = useState<Organization | null>(null);
   const [loading, setLoading] = useState(true);
+  // Which user we last resolved an org for. See the auth listener below.
+  const lastUserId = useRef<string | null | undefined>(undefined);
 
   async function loadOrg(active: Session | null) {
     if (!active) {
@@ -62,21 +71,62 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     let cancelled = false;
-
-    supabase.auth.getSession().then(async ({ data }) => {
-      if (cancelled) return;
-      setSession(data.session);
-      await loadOrg(data.session);
+    const ready = () => {
       if (!cancelled) setLoading(false);
-    });
+    };
 
-    const { data: sub } = supabase.auth.onAuthStateChange(async (_e, next) => {
-      setSession(next);
-      await loadOrg(next);
+    // supabase-js serialises token work behind a Web Lock, and getSession() can
+    // block on it — another tab holding it, or one that died without releasing
+    // it. Without a ceiling the app sits on "Loading..." indefinitely with
+    // nothing on screen to say why. Falling through to signed-out is wrong but
+    // recoverable; hanging is neither.
+    const timer = setTimeout(() => {
+      if (!cancelled) {
+        console.warn("Session lookup did not settle in time; continuing.");
+        ready();
+      }
+    }, 6000);
+
+    supabase.auth
+      .getSession()
+      .then(async ({ data }) => {
+        if (cancelled) return;
+        setSession(data.session);
+        lastUserId.current = data.session?.user?.id ?? null;
+        await loadOrg(data.session);
+      })
+      // Without this, a rejection skips setLoading(false) entirely and the
+      // spinner never clears.
+      .catch((err) => console.error("Session lookup failed:", err))
+      .finally(ready);
+
+    const { data: sub } = supabase.auth.onAuthStateChange((_e, next) => {
+      // Never await Supabase inside this callback. It runs while the auth lock
+      // is held, and loadOrg -> api.get -> getSession() waits on that same
+      // lock, which deadlocks: the callback never returns, the lock is never
+      // released, and every later auth call queues behind it. Deferring by a
+      // turn lets the lock go first.
+      setTimeout(async () => {
+        if (cancelled) return;
+        setSession(next);
+
+        // Only refetch the org when the *user* changes. TOKEN_REFRESHED fires
+        // on a timer and on any getSession() that renews - and loadOrg calls
+        // /auth/me, whose request() calls getSession(), so reloading on every
+        // event feeds itself into a loop of auth/me calls. An org cannot change
+        // without the user changing.
+        const userId = next?.user?.id ?? null;
+        if (userId !== lastUserId.current) {
+          lastUserId.current = userId;
+          await loadOrg(next);
+        }
+        ready();
+      }, 0);
     });
 
     return () => {
       cancelled = true;
+      clearTimeout(timer);
       sub.subscription.unsubscribe();
     };
   }, []);

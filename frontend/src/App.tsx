@@ -32,7 +32,7 @@ function RequireOrg({ children }: { children: React.ReactNode }) {
 
   // Redirecting before the session has loaded bounces people who are already
   // signed in straight back to the login page on every refresh.
-  if (loading) return <main className="wrap">Loading...</main>;
+  if (loading) return <Loading />;
   if (!session)
     return <Navigate to="/login" replace state={{ from: location.pathname }} />;
   if (!org) return <Navigate to="/onboarding" replace />;
@@ -141,6 +141,17 @@ export default function App() {
         </BrowserRouter>
       </AuthProvider>
     </QueryClientProvider>
+  );
+}
+
+/** Shown while the session resolves. Says what it is waiting on: a bare
+ *  "Loading..." that never clears is indistinguishable from a hung page, and
+ *  that ambiguity cost real debugging time. */
+function Loading() {
+  return (
+    <main className="wrap">
+      <p className="hint m-0">Checking your session...</p>
+    </main>
   );
 }
 

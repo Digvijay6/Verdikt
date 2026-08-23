@@ -18,6 +18,8 @@ import Onboarding from "./routes/auth/Onboarding";
 import Signup from "./routes/auth/Signup";
 import "./app.css";
 
+import InterviewRoom from "./routes/interview/InterviewRoom";
+
 const queryClient = new QueryClient();
 
 /**
@@ -113,10 +115,7 @@ export default function App() {
 
               {/* Public - no account, ever */}
               <Route path="/apply/:jobId" element={<ApplicationForm />} />
-              <Route
-                path="/interview/:token"
-                element={<Placeholder name="Interview" />}
-              />
+              <Route path="/interview/:token" element={<InterviewRoom />} />
 
               {/* LANE 3 */}
               <Route

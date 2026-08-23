@@ -31,4 +31,5 @@ frontend/src/types/api.ts
 # build output
 frontend/dist/
 *.tsbuildinfo
+gen-lang-client-0373170935-01e24038db05.json
 supabase/.temp/

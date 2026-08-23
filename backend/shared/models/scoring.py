@@ -1,8 +1,11 @@
 """Scoring models — written by lane 2, read and rendered by lane 3.
 
-The hybrid design: a fast correctness-only signal streams during the call, then
-a full two-pass re-score replaces it after. `InterviewResult` is the lane 2 ->
-lane 3 handoff and is what the leaderboard ranks on.
+Scoring uses a 0-100 scale with 5 bands per dimension. The rubric lives in
+docs/rubric.md and the anchor descriptions in llm/prompts/score-answer.v1.md.
+
+The hybrid design: a fast correctness-only signal streams during the call,
+then a full two-pass re-score replaces it after. `InterviewResult` is the
+lane 2 -> lane 3 handoff and is what the leaderboard ranks on.
 """
 
 from datetime import datetime
@@ -14,22 +17,12 @@ from pydantic import BaseModel, Field, model_validator
 from .interview import IntegrityReport
 from .job import RubricDimension
 
-
-class DimensionScore(BaseModel):
-    """One dimension of one answer.
-
-    `evidence` is not optional. Lane 3's chat exists to answer "why did it score
-    a 3 on depth?" — without a verbatim quote it can only paraphrase, which is
-    exactly the black-box behaviour we're differentiating against.
-    """
-
-    key: str
-    score: int = Field(ge=1, le=5)
-    evidence: str = Field(description="Verbatim quote from the transcript")
-    rationale: str
+# --- Enums ----------------------------------------------------------------
 
 
 class OwnershipLevel(StrEnum):
+    """Categorical, not scored 0-100. Feeds into depth interpretation."""
+
     FULL_OWNER = "full_owner"
     MAJOR_CONTRIBUTOR = "major_contributor"
     MINOR_CONTRIBUTOR = "minor_contributor"
@@ -37,10 +30,41 @@ class OwnershipLevel(StrEnum):
 
 
 class ConsistencyLabel(StrEnum):
+    """Per-answer consistency. Aggregated into a 0-100 consistency_score."""
+
     CONSISTENT = "consistent"
     VAGUE = "vague"
     UNVERIFIABLE = "unverifiable"
     INFLATED = "inflated"
+
+
+class Recommendation(StrEnum):
+    ADVANCE = "advance"
+    HOLD = "hold"
+    REJECT = "reject"
+
+
+# --- Scoring dimensions ---------------------------------------------------
+
+
+class DimensionScore(BaseModel):
+    """One dimension of one answer, scored 0-100.
+
+    `evidence` is not optional. Lane 3's chat exists to answer "why did it
+    score a 73 on depth?" — without a verbatim quote it can only paraphrase,
+    which is exactly the black-box behaviour we're differentiating against.
+    """
+
+    key: str = Field(
+        description="One of: 'domain_technical_accuracy', 'project_depth', "
+        "'followup_resilience'"
+    )
+    score: int = Field(ge=0, le=100)
+    band: str = Field(
+        description="One of: 'expert', 'strong', 'adequate', 'weak', 'poor'"
+    )
+    evidence: str = Field(description="Verbatim quote from the transcript")
+    rationale: str
 
 
 class ScoringQuestionType(StrEnum):
@@ -117,6 +141,10 @@ class AnswerScore(ScoreAnswerResponse):
     """Persisted per-question score with trusted context and provenance."""
 
     followed_up: bool = False
+    followup_resilience_score: int = Field(
+        0, ge=0, le=100,
+        description="Only meaningful if followed_up=True",
+    )
     model_id: str
     prompt_version: str
 
@@ -126,7 +154,7 @@ class LiveSignal(BaseModel):
     recruiter clearly marked provisional — it is overwritten by AnswerScore."""
 
     question_id: str
-    correctness: int = Field(ge=1, le=5)
+    correctness: int = Field(ge=0, le=100)
     at_ms: int
 
 
@@ -135,18 +163,12 @@ class HolisticScore(BaseModel):
     transcript. Keeps the prompt bounded and lets the judge see cross-question
     patterns that per-question scoring structurally cannot."""
 
-    score: float = Field(ge=1.0, le=5.0)
+    score: float = Field(ge=0.0, le=100.0)
     strengths: list[str] = Field(max_length=3)
     concerns: list[str] = Field(max_length=3)
     representative_quote: str
     model_id: str
     prompt_version: str
-
-
-class Recommendation(StrEnum):
-    ADVANCE = "advance"
-    HOLD = "hold"
-    REJECT = "reject"
 
 
 class SeniorityBucket(StrEnum):
@@ -240,33 +262,44 @@ class InterviewResult(BaseModel):
     org_id: str
     application_id: str
     job_id: str
+    seniority: str = Field(description="drives composite weights")
 
     answers: list[AnswerScore]
     holistic: HolisticScore
-    role_fit: float = Field(ge=1.0, le=5.0)
+    consistency_score: int = Field(
+        ge=0, le=100,
+        description="max(0, 100 - sum(penalties))",
+    )
 
     # v2's recruiter-facing score. Optional so results produced under the v1
     # contract remain readable and can be re-scored deliberately.
-    seniority: SeniorityBucket | None = None
+    seniority_bucket: SeniorityBucket | None = None
     technical_accuracy_score: float | None = Field(None, ge=0.0, le=100.0)
     project_depth_score: float | None = Field(None, ge=0.0, le=100.0)
     followup_resilience_score: float | None = Field(None, ge=0.0, le=100.0)
-    consistency_score: float | None = Field(None, ge=0.0, le=100.0)
     composite_score: float | None = Field(None, ge=0.0, le=100.0)
-    needs_human_review: bool = False
-    review_reasons: list[ReviewReason] = Field(default_factory=list)
+    composite_weights: dict[str, float] = Field(
+        default_factory=dict, description="The actual weights used, for audit"
+    )
 
     # Compatibility score for v1 consumers. New v2 results derive this from
     # composite_score using 1 + 4 * (composite / 100).
     overall: float = Field(ge=1.0, le=5.0)
     percentile: float | None = Field(None, description="Within the same job only. Never cross-job.")
     recommendation: Recommendation
+    needs_human_review: bool = False
+    human_review_reasons: list[str] = []
     hard_gate_applied: bool = False
 
     integrity: IntegrityReport
 
-    # Provenance. Without these a leaderboard silently compares scores produced
-    # by different models under different prompts, which is worse than no
-    # leaderboard. See docs/rubric.md -> Calibration.
+    # For Lane 3's recruiter chat context
+    transcript_summary: str = Field(
+        description="Short prose gist for the recruiter chat"
+    )
+    transcript_url: str = ""
+
+    # Provenance. Without these a leaderboard silently compares scores
+    # produced by different models under different prompts.
     rubric_version: str
     scored_at: datetime

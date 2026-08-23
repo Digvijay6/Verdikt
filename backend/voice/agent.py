@@ -211,6 +211,7 @@ async def _run_postcall(
     package: InterviewPackage,
     sm: InterviewStateMachine,
     agent: InterviewerAgent,
+    application_id: str = "",
 ) -> None:
     """Post-call pipeline — runs on room disconnect."""
     try:
@@ -230,12 +231,14 @@ async def _run_postcall(
             state_machine=sm,
             transcript=agent.get_transcript(),
             integrity=integrity,
+            application_id="",  # fetched inside _write_interview_result
         )
 
         await asyncio.to_thread(
             _write_interview_result,
             package.interview_id,
             package.org_id,
+            package.job_id,
             result,
             agent.get_transcript(),
             agent.get_live_signals(),
@@ -245,6 +248,7 @@ async def _run_postcall(
             "interview_completed",
             interview_id=package.interview_id,
             overall=result.overall,
+            composite_score=result.composite_score,
             recommendation=result.recommendation.value,
             needs_human_review=result.needs_human_review,
         )
@@ -361,12 +365,32 @@ def _push_live_signal(interview_id: str, signal: LiveSignal) -> None:
 def _write_interview_result(
     interview_id: str,
     org_id: str,
+    job_id: str,
     result,
     transcript: list[TranscriptTurn],
     live_signals: list[LiveSignal],
 ) -> None:
+    """Write the final interview result to Supabase.
+
+    Writes to three tables:
+    - interview: status, transcript, full result JSON
+    - interview_score: Lane 3 reads this for the leaderboard (via build_interview_score_row)
+    - question_instance: per-question scores
+    - integrity_event: proctoring events
+    """
     supabase = db()
 
+    # Fetch application_id from the interview row
+    interview_row = supabase.table("interview").select("application_id").eq(
+        "id", interview_id
+    ).limit(1).execute()
+    application_id = interview_row.data[0]["application_id"] if interview_row.data else ""
+
+    # Stamp application_id onto the result so build_interview_score_row can use it
+    if not result.application_id:
+        result = result.model_copy(update={"application_id": application_id})
+
+    # 1. Update the interview row
     supabase.table("interview").update({
         "status": "completed",
         "ended_at": datetime.now(UTC).isoformat(),
@@ -375,6 +399,17 @@ def _write_interview_result(
         "model_id": "gemini-2.5-flash",
     }).eq("id", interview_id).execute()
 
+    # 2. Write to interview_score (Lane 3 reads this for the leaderboard)
+    from voice.scoring.pipeline import build_score_row
+
+    score_row = build_score_row(result)
+    # Remove fields that come from the DB (id, created_at, updated_at)
+    score_row.pop("id", None)
+    score_row.pop("created_at", None)
+    score_row.pop("updated_at", None)
+    supabase.table("interview_score").upsert(score_row).execute()
+
+    # 3. Write per-question scores
     for answer in result.answers:
         supabase.table("question_instance").upsert({
             "org_id": org_id,
@@ -386,6 +421,7 @@ def _write_interview_result(
             "prompt_version": answer.prompt_version,
         }).execute()
 
+    # 4. Write integrity events
     for event in result.integrity.events:
         supabase.table("integrity_event").insert({
             "org_id": org_id,

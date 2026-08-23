@@ -22,8 +22,6 @@ from livekit import api
 
 from shared.config import get_settings
 from shared.db import db
-from shared.models.interview import InterviewPackage
-from shared.models.job import Question
 
 
 async def main() -> None:
@@ -63,45 +61,25 @@ async def main() -> None:
     print(f"\n{'='*60}")
     print(f"  Job: {job['title']}")
     print(f"  Seniority: {job['seniority']}")
-    print(f"  Rubric: {job['rubric_version']}")
-    print(f"  Questions: {len(job.get('question_bank') or [])}")
     print(f"  Application: {application['id'][:8]}...")
     print(f"  Resume: {'yes' if application.get('parsed_resume') else 'no'}")
 
-    # 3. Build the question list
-    question_bank = job.get("question_bank") or []
-    questions = [Question.model_validate(q) for q in question_bank]
+    # 3. Build the InterviewPackage via Lane 1's packaging function
+    from intake.packaging import PackageUnavailable, build_interview_package
 
-    # 4. Build resume summary
-    resume_summary = "No resume available."
-    resume_highlights = None
-    if application.get("parsed_resume"):
-        from shared.models.candidate import ParsedResume
-
-        resume_highlights = ParsedResume.model_validate(
-            application["parsed_resume"]
+    interview_id = "00000000-0000-0000-0000-000000000001"
+    try:
+        package = build_interview_package(
+            application_id=application["id"],
+            org_id=application["org_id"],
+            interview_id=interview_id,
         )
-        resume_summary = (
-            f"{resume_highlights.full_name or 'Candidate'} — "
-            f"{resume_highlights.total_years_experience or 0} years. "
-            f"Skills: {', '.join(resume_highlights.skills[:10])}."
-        )
+    except PackageUnavailable as e:
+        print(f"ERROR: {e}")
+        sys.exit(1)
 
-    # 5. Assemble the InterviewPackage
-    package = InterviewPackage(
-        interview_id="test-interview-direct",
-        org_id=job["org_id"],
-        job_id=job["id"],
-        job_title=job["title"],
-        seniority=job["seniority"],
-        questions=questions,
-        resume_summary=resume_summary,
-        resume_highlights=resume_highlights,
-        rubric_version=job.get("rubric_version", "v1"),
-        language="en",
-    )
-
-    print(f"  Package: {len(questions)} questions loaded")
+    print(f"  Package: {len(package.questions)} questions loaded")
+    print(f"  Rubric version: {package.rubric_version}")
     print(f"{'='*60}\n")
 
     # 6. Create a LiveKit room with the package as metadata
@@ -145,21 +123,20 @@ async def main() -> None:
         .to_jwt()
     )
 
-    # 8. Write a test interview row to Supabase (so the worker can find it)
+    # 8. Write a test interview row to Supabase (so the post-call pipeline can find it)
     insert_data = {
-        "id": "00000000-0000-0000-0000-000000000001",
-        "org_id": job["org_id"],
+        "id": interview_id,
+        "org_id": package.org_id,
         "application_id": application["id"],
-        "job_id": job["id"],
+        "job_id": package.job_id,
         "status": "in_progress",
         "room_name": room_name,
+        "seniority": package.seniority,
         "started_at": datetime.now(UTC).isoformat(),
     }
-    # seniority column may not exist yet if migration hasn't been pushed
     try:
         supabase.table("interview").upsert(insert_data).execute()
     except Exception:
-        # Try without seniority (column not added by migration yet)
         insert_data.pop("seniority", None)
         supabase.table("interview").upsert(insert_data).execute()
 
@@ -223,7 +200,7 @@ async def main() -> None:
 
         # Delete the test interview row
         supabase.table("interview").delete().eq(
-            "id", "00000000-0000-0000-0000-000000000001"
+            "id", interview_id
         ).execute()
 
         # Delete the room

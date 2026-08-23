@@ -72,11 +72,16 @@ class InterviewerAgent(Agent):
         )
         self._package = package
         self._sm = state_machine
+        self._session = None  # set by entrypoint after session.start()
         self._turn_start_ms = 0
         self._last_agent_end_ms = 0
         self._transcript: list[TranscriptTurn] = []
         self._live_signals: list[LiveSignal] = []
         self._browser_events: list[IntegrityEvent] = []
+
+    def set_session(self, session) -> None:
+        """Called by entrypoint so the agent can call generate_reply."""
+        self._session = session
 
     async def on_user_turn_completed(
         self, turn_ctx: ChatContext, new_message: ChatMessage
@@ -109,19 +114,30 @@ class InterviewerAgent(Agent):
         # Fire live scoring off-thread (non-blocking)
         asyncio.create_task(self._fire_live_score(transcript, q))
 
-        # Decide: follow up or advance
+        # Decide: follow up, advance, or close — and SPEAK the next thing
         if self._sm.should_follow_up():
-            self._sm.get_follow_up_prompt()
-            # Record the follow-up as an agent transcript turn
+            follow_up_prompt = self._sm.get_follow_up_prompt()
             self._last_agent_end_ms = now_ms
-            # The agent will speak the follow-up via generate_reply below
+            if self._session and follow_up_prompt:
+                await self._session.generate_reply(
+                    instructions=f"Ask this follow-up question: {follow_up_prompt}"
+                )
         else:
             self._sm.advance()
             next_q = self._sm.current_question()
-            if next_q is None:
-                # Interview done — closing
-                pass
             self._last_agent_end_ms = now_ms
+            if next_q is not None and self._session:
+                await self._session.generate_reply(
+                    instructions=f"Ask this question: {next_q.prompt}"
+                )
+            elif next_q is None and self._session:
+                # All questions exhausted — close the interview
+                await self._session.generate_reply(
+                    instructions=(
+                        "Thank the candidate for their time, tell them the "
+                        "recruiter will follow up, and end the interview."
+                    )
+                )
 
     async def _fire_live_score(self, transcript: str, question) -> None:
         """Score the answer for correctness in real time (off-thread)."""
@@ -207,6 +223,7 @@ async def entrypoint(ctx: JobContext) -> None:
 
     # Start the session
     await session.start(agent=agent, room=ctx.room)
+    agent.set_session(session)
 
     # Greet and ask the first question
     first_q = sm.current_question()

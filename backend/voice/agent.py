@@ -24,7 +24,6 @@ from __future__ import annotations
 
 import asyncio
 import json
-import time
 from datetime import UTC, datetime
 
 import structlog
@@ -35,137 +34,93 @@ from livekit.agents import (
     WorkerOptions,
     cli,
 )
-from livekit.agents.llm import ChatContext, ChatMessage
 from livekit.plugins import silero
 
 from shared.db import db
 from shared.models.interview import (
-    IntegrityEvent,
     InterviewPackage,
     TranscriptTurn,
 )
 from shared.models.scoring import LiveSignal
 from voice.interview import InterviewStateMachine
 from voice.proctor import aggregate_integrity
-from voice.scoring import run_postcall_pipeline, score_live
+from voice.scoring import run_postcall_pipeline
 
 logger = structlog.get_logger(__name__)
 
 
 class InterviewerAgent(Agent):
-    """The voice interviewer. Asks questions, follows up, records turns."""
+    """The voice interviewer. Questions are embedded in the system prompt so
+    Gemini's speech-to-speech model handles the full conversation flow —
+    asking questions, following up, and moving to the next question — without
+    needing per-turn generate_reply calls (which don't work with realtime
+    speech-to-speech models)."""
 
     def __init__(
         self,
         package: InterviewPackage,
-        state_machine: InterviewStateMachine,
     ) -> None:
-        # Load the interviewer system prompt from the registry
         from pathlib import Path
 
         repo_root = Path(__file__).resolve().parents[2]
         prompt_path = repo_root / "llm" / "prompts" / "interviewer-system.v1.md"
-        system_prompt = prompt_path.read_text()
+        base_prompt = prompt_path.read_text()
 
-        super().__init__(
-            instructions=system_prompt,
+        # Build the question guide as part of the system prompt.
+        # Gemini's realtime model reads this once and conducts the interview
+        # autonomously — asking one question at a time, following up on shallow
+        # answers, and moving to the next question.
+        question_guide = self._build_question_guide(package)
+        resume_context = self._build_resume_context(package)
+
+        full_prompt = (
+            f"{base_prompt}\n\n"
+            f"## Job Context\n"
+            f"Job title: {package.job_title}\n"
+            f"Seniority: {package.seniority}\n\n"
+            f"## Candidate Resume Summary\n"
+            f"{resume_context}\n\n"
+            f"## Interview Questions\n"
+            f"Ask these questions in order. Ask ONE at a time. After each "
+            f"answer, decide: ask a follow-up if the answer is shallow (max 2 "
+            f"follow-ups per question), or move to the next question. After all "
+            f"questions, thank the candidate and end the interview.\n\n"
+            f"{question_guide}"
         )
+
+        super().__init__(instructions=full_prompt)
         self._package = package
-        self._sm = state_machine
-        self._session = None  # set by entrypoint after session.start()
-        self._turn_start_ms = 0
-        self._last_agent_end_ms = 0
         self._transcript: list[TranscriptTurn] = []
         self._live_signals: list[LiveSignal] = []
-        self._browser_events: list[IntegrityEvent] = []
 
-    def set_session(self, session) -> None:
-        """Called by entrypoint so the agent can call generate_reply."""
-        self._session = session
+    @staticmethod
+    def _build_question_guide(package: InterviewPackage) -> str:
+        lines = []
+        for i, q in enumerate(package.questions, 1):
+            lines.append(f"Q{i} [{q.type.value}] ({q.competency}):")
+            lines.append(f"  {q.prompt}")
+            if q.follow_up_guidance:
+                lines.append(f"  Follow-up guidance: {q.follow_up_guidance}")
+            if q.must_have:
+                lines.append("  [MUST HAVE — weak answer here is a hard gate]")
+            lines.append("")
+        return "\n".join(lines)
 
-    async def on_user_turn_completed(
-        self, turn_ctx: ChatContext, new_message: ChatMessage
-    ) -> None:
-        """Candidate finished speaking — capture the answer and decide next."""
-        transcript = new_message.text_content or ""
-        if not transcript.strip():
-            return
-
-        now_ms = int(time.time() * 1000)
-
-        # Record the answer in the state machine
-        self._sm.record_answer(
-            transcript=transcript,
-            live_correctness=0,  # updated after live score
-            answer_start_ms=self._turn_start_ms,
-            answer_end_ms=now_ms,
-        )
-
-        # Record transcript turn
-        q = self._sm.current_question()
-        self._transcript.append(TranscriptTurn(
-            speaker="candidate",
-            text=transcript,
-            start_ms=self._turn_start_ms,
-            end_ms=now_ms,
-            question_id=q.id if q else None,
-        ))
-
-        # Fire live scoring off-thread (non-blocking)
-        asyncio.create_task(self._fire_live_score(transcript, q))
-
-        # Decide: follow up, advance, or close — and SPEAK the next thing
-        if self._sm.should_follow_up():
-            follow_up_prompt = self._sm.get_follow_up_prompt()
-            self._last_agent_end_ms = now_ms
-            if self._session and follow_up_prompt:
-                await self._session.generate_reply(
-                    instructions=f"Ask this follow-up question: {follow_up_prompt}"
+    @staticmethod
+    def _build_resume_context(package: InterviewPackage) -> str:
+        if not package.resume_highlights:
+            return package.resume_summary or "No resume available."
+        r = package.resume_highlights
+        parts = [package.resume_summary or ""]
+        if r.skills:
+            parts.append(f"Skills: {', '.join(r.skills[:15])}")
+        if r.employment:
+            for emp in r.employment[:3]:
+                parts.append(
+                    f"- {emp.title} at {emp.company} "
+                    f"({emp.start or '?'} to {emp.end or 'present'})"
                 )
-        else:
-            self._sm.advance()
-            next_q = self._sm.current_question()
-            self._last_agent_end_ms = now_ms
-            if next_q is not None and self._session:
-                await self._session.generate_reply(
-                    instructions=f"Ask this question: {next_q.prompt}"
-                )
-            elif next_q is None and self._session:
-                # All questions exhausted — close the interview
-                await self._session.generate_reply(
-                    instructions=(
-                        "Thank the candidate for their time, tell them the "
-                        "recruiter will follow up, and end the interview."
-                    )
-                )
-
-    async def _fire_live_score(self, transcript: str, question) -> None:
-        """Score the answer for correctness in real time (off-thread)."""
-        if question is None:
-            return
-        try:
-            signal, provenance = await asyncio.to_thread(
-                score_live,
-                question.prompt,
-                question.type.value,
-                question.competency,
-                transcript,
-            )
-            signal.question_id = question.id
-            self._live_signals.append(signal)
-
-            # Update the state machine's live correctness
-            if self._sm._current_turn is not None:
-                self._sm._current_turn.live_correctness = signal.correctness
-
-            # Push to Supabase realtime for the recruiter HUD
-            await asyncio.to_thread(
-                _push_live_signal,
-                self._package.interview_id,
-                signal,
-            )
-        except Exception:
-            logger.exception("live_scoring_failed")
+        return "\n".join(parts)
 
     def get_transcript(self) -> list[TranscriptTurn]:
         return list(self._transcript)
@@ -175,6 +130,51 @@ class InterviewerAgent(Agent):
 
     def get_correctness_scores(self) -> dict[str, int]:
         return {s.question_id: s.correctness for s in self._live_signals}
+
+
+async def _run_postcall(
+    package: InterviewPackage,
+    agent: InterviewerAgent,
+) -> None:
+    """Post-call pipeline — runs on room disconnect."""
+    try:
+        # Build a state machine from the package for the scoring pipeline
+        sm = InterviewStateMachine(questions=package.questions)
+        sm.start()
+        sm.close()
+
+        integrity = aggregate_integrity(
+            org_id=package.org_id,
+            browser_events=agent.get_correctness_scores(),
+            state_machine=sm,
+            answer_correctness_scores=agent.get_correctness_scores(),
+        )
+
+        result = await run_postcall_pipeline(
+            package=package,
+            state_machine=sm,
+            transcript=agent.get_transcript(),
+            integrity=integrity,
+        )
+
+        await asyncio.to_thread(
+            _write_interview_result,
+            package.interview_id,
+            package.org_id,
+            result,
+            agent.get_transcript(),
+            agent.get_live_signals(),
+        )
+
+        logger.info(
+            "interview_completed",
+            interview_id=package.interview_id,
+            overall=result.overall,
+            recommendation=result.recommendation.value,
+            needs_human_review=result.needs_human_review,
+        )
+    except Exception:
+        logger.exception("postcall_pipeline_failed")
 
 
 async def entrypoint(ctx: JobContext) -> None:
@@ -200,14 +200,11 @@ async def entrypoint(ctx: JobContext) -> None:
         questions=len(package.questions),
     )
 
-    # Build the state machine
-    sm = InterviewStateMachine(questions=package.questions)
-    sm.start()
-
-    # Build the session with Gemini Live via LiveKit's google plugin
+    # Build the session with Gemini Live (speech-to-speech).
+    # The full interview guide is in the system prompt — Gemini conducts
+    # the interview autonomously: asks questions, follows up, moves on.
     from livekit.plugins import google as lk_google
 
-    # Use the 2.5 native-audio model (supports mid-session generate_reply)
     session = AgentSession(
         llm=lk_google.realtime.RealtimeModel(
             model="gemini-2.5-flash-native-audio-preview-12-2025",
@@ -219,72 +216,20 @@ async def entrypoint(ctx: JobContext) -> None:
         ),
     )
 
-    agent = InterviewerAgent(package=package, state_machine=sm)
+    agent = InterviewerAgent(package=package)
 
-    # Start the session
+    # Start the session — Gemini greets and asks Q1 from the system prompt
     await session.start(agent=agent, room=ctx.room)
-    agent.set_session(session)
 
-    # Greet and ask the first question
-    first_q = sm.current_question()
-    if first_q:
-        await session.generate_reply(
-            instructions=(
-                f"Greet the candidate briefly and ask this question: "
-                f"{first_q.prompt}"
-            )
+    # On room disconnect — run the post-call pipeline.
+    # LiveKit's Python SDK requires SYNC callbacks for room events.
+    def on_disconnect() -> None:
+        logger.info("room_disconnected", interview_id=package.interview_id)
+        asyncio.create_task(
+            _run_postcall(package, agent)
         )
 
-    # Mark the agent's first speech end for latency tracking
-    agent._last_agent_end_ms = int(time.time() * 1000)
-
-    # On room disconnect — run the post-call pipeline
-    @ctx.room.on("disconnected")
-    async def on_disconnect() -> None:
-        logger.info("room_disconnected", interview_id=package.interview_id)
-
-        try:
-            # Finalize any in-progress turn
-            if sm._current_turn is not None and sm._current_turn.answer_text:
-                sm.advance()
-            sm.close()
-
-            # Aggregate integrity
-            integrity = aggregate_integrity(
-                org_id=package.org_id,
-                browser_events=agent.get_correctness_scores(),
-                state_machine=sm,
-                answer_correctness_scores=agent.get_correctness_scores(),
-            )
-
-            # Run the post-call scoring pipeline
-            result = await run_postcall_pipeline(
-                package=package,
-                state_machine=sm,
-                transcript=agent.get_transcript(),
-                integrity=integrity,
-            )
-
-            # Write results to Supabase
-            await asyncio.to_thread(
-                _write_interview_result,
-                package.interview_id,
-                package.org_id,
-                result,
-                agent.get_transcript(),
-                agent.get_live_signals(),
-                sm,
-            )
-
-            logger.info(
-                "interview_completed",
-                interview_id=package.interview_id,
-                overall=result.overall,
-                recommendation=result.recommendation.value,
-                needs_human_review=result.needs_human_review,
-            )
-        except Exception:
-            logger.exception("postcall_pipeline_failed")
+    ctx.room.on("disconnected", on_disconnect)
 
 
 def _push_live_signal(interview_id: str, signal: LiveSignal) -> None:
@@ -306,7 +251,6 @@ def _write_interview_result(
     result,
     transcript: list[TranscriptTurn],
     live_signals: list[LiveSignal],
-    sm: InterviewStateMachine,
 ) -> None:
     """Write the final interview result, transcript, and per-question scores
     to Supabase."""

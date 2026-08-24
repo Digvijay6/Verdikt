@@ -8,6 +8,7 @@ import {
   RecommendationBadge,
   StatusBadge,
 } from "../../components/insights/ScoreDisplay";
+import { LeaderboardAnalytics } from "../../components/insights/LeaderboardAnalytics";
 import type {
   JobSummary,
   LeaderboardEntry,
@@ -131,6 +132,8 @@ export default function LeaderboardPage() {
               <strong>{flagged}</strong>
             </div>
           </section>
+
+          <LeaderboardAnalytics entries={entries} />
 
           <section className="leaderboard-section">
             <div className="leaderboard-toolbar">

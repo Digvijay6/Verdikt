@@ -830,6 +830,28 @@ auto-rejects (hard rule 9).
 
 ---
 
+## D41 · ElevenLabs REST is the interview voice provider
+
+**Chosen:** synthesize interviewer speech with ElevenLabs
+`eleven_flash_v2_5`, requesting raw 24 kHz mono PCM through the REST API and
+feeding it into LiveKit's `AudioEmitter`.
+
+**Rejected:** keeping Rumik as the active provider. Its account returned
+`INSUFFICIENT_BALANCE`, so it could not complete the production-shaped browser
+test. Also rejected adding the ElevenLabs SDK or LiveKit plugin: the existing
+REST adapter needs neither dependency.
+
+**Why:** a real Chrome run completed the introduction, ten scored questions,
+candidate question period, closing, disconnect, deterministic scoring, and the
+Lane 3 database publication. The provider returned playable PCM for every
+interviewer turn.
+
+**Tradeoff accepted:** the REST adapter is non-streaming. It is simpler and
+works on networks where the WebSocket route may fail, but time-to-first-audio
+is higher than a streaming adapter and streamed LLM text may produce multiple
+short synthesis requests. Revisit streaming only if measured conversational
+latency becomes unacceptable.
+
 ---
 
 ## Provenance of the original plan

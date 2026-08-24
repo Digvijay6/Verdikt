@@ -134,11 +134,11 @@ room metadata, silero VAD. Eight commits unmerged. They have added
 The interview-completed hook now invokes the shared one-prompt scorer and
 persists the normalized Lane 2 → Lane 3 handoff.
 
-The custom Rumik TTS adapter now initializes LiveKit's `AudioEmitter` as a
-single non-streaming segment before pushing PCM. A contract test covers the
-emitter path. The candidate room mounts LiveKit's remote-audio renderer and
-uses its data-channel hook; Chrome verification confirmed an unmuted, actively
-playing audio element receiving the generated Rumik greeting.
+The worker now uses the custom ElevenLabs REST adapter with `eleven_flash_v2_5`
+and raw 24 kHz mono PCM. The adapter initializes LiveKit's `AudioEmitter` as a
+single non-streaming segment before pushing PCM, and a contract test covers the
+emitter path. `livekit-plugins-deepgram` is explicitly declared in the `[voice]`
+extra because the worker imports it at runtime.
 
 The candidate room now requests camera and microphone through LiveKit, shows a
 local camera preview, and provides mute, camera, and End call controls. Ending
@@ -151,8 +151,9 @@ candidate to click End call.
 
 Current verification constraints and issues:
 
-- The latest test package contained **9 questions**, not one. The worker
-  receives all nine and the state machine asks them in package order.
+- A full Chrome media run on 2026-08-24 contained **10 questions**, not one.
+  The worker received and asked `q1` through `q10` in package order, offered the
+  candidate question period, delivered the closing, and ended through the UI.
 - The Python state machine now owns question order. The introduction is not
   scored; each primary and follow-up answer is tagged to its question before
   the next prompt is spoken, and the final answer is committed before the
@@ -163,11 +164,16 @@ Current verification constraints and issues:
   `question_conversation_turn`, `question_rubric_assessment`, and finally
   `interview_score`. The recruiter-facing row is published last so Lane 3 does
   not observe a partially persisted result.
-- The controlled Chrome profile exposes no `navigator.mediaDevices`, so its UI
-  and disconnect lifecycle were verified but a physical camera stream still
-  needs one manual test in normal Chrome.
-- Rumik currently returns `INSUFFICIENT_BALANCE`; live greeting audio cannot be
-  reverified until that account is funded.
+- Chrome verification used real LiveKit microphone and camera tracks with a
+  deterministic audio capture. The final interview reached `completed` with 10
+  question instances, 20 conversation turns, 34 scoring claims, 10 rubric
+  assessments, and one published `interview_score` row.
+- Post-call transcript timestamps are interview-relative milliseconds; Unix
+  epoch milliseconds overflowed the database integer contract. The worker now
+  allows 180 seconds for the shutdown callback so scoring and persistence are
+  not killed by LiveKit's 10-second default.
+- The frontend completed with no console errors. Its auth bootstrap emitted one
+  non-blocking `Session lookup did not settle in time; continuing` warning.
 - HTTP/2 client loggers are clamped above DEBUG because protocol debug output
   can include authorization headers.
 

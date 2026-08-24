@@ -60,6 +60,11 @@ from voice.scoring.persistence import persist_result  # noqa: E402
 logger = structlog.get_logger(__name__)
 
 
+def _relative_ms(*, started_at_ms: int, now_ms: int) -> int:
+    """Return the database contract's milliseconds since interview start."""
+    return max(0, now_ms - started_at_ms)
+
+
 class InterviewerAgent(Agent):
     """The voice interviewer.
 
@@ -101,6 +106,7 @@ class InterviewerAgent(Agent):
         self._session: AgentSession | None = None
         self._turn_start_ms = 0
         self._last_agent_end_ms = 0
+        self._started_at_ms = int(time.time() * 1000)
         self._transcript: list[TranscriptTurn] = []
         self._live_signals: list[LiveSignal] = []
 
@@ -144,7 +150,7 @@ class InterviewerAgent(Agent):
         if not transcript.strip():
             return
 
-        now_ms = int(time.time() * 1000)
+        now_ms = self._elapsed_ms()
 
         if self._sm.phase is Phase.GREETING:
             await self._record_candidate_transcript(transcript, now_ms, question_id=None)
@@ -255,7 +261,7 @@ class InterviewerAgent(Agent):
     async def _say_scripted(self, text: str, *, question_id: str | None) -> None:
         if not self._session or not text:
             return
-        now_ms = int(time.time() * 1000)
+        now_ms = self._elapsed_ms()
         turn = TranscriptTurn(
             speaker="agent",
             text=text,
@@ -268,6 +274,12 @@ class InterviewerAgent(Agent):
         self._session.say(text, allow_interruptions=True)
         self._last_agent_end_ms = now_ms
         self._turn_start_ms = now_ms
+
+    def _elapsed_ms(self) -> int:
+        return _relative_ms(
+            started_at_ms=self._started_at_ms,
+            now_ms=int(time.time() * 1000),
+        )
 
     async def _publish_transcript(self, turn: TranscriptTurn) -> None:
         """Send a transcript turn to the frontend via LiveKit data channel."""
@@ -361,17 +373,21 @@ async def entrypoint(ctx: JobContext) -> None:
     from livekit.plugins import deepgram
     from livekit.plugins import google as lk_google
 
-    from voice.rumik_tts import RumikTTS
+    from voice.elevenlabs_rest_tts import ElevenLabsRESTTTS
 
     deepgram_api_key = os.environ.get("DEEPGRAM_API_KEY", "")
     gemini_api_key = os.environ.get("GEMINI_API_KEY", "")
-    rumik_api_key = os.environ.get("RUMIK_API_KEY", "")
+    elevenlabs_api_key = os.environ.get("ELEVENLABS_API_KEY", "")
+    elevenlabs_voice_id = os.environ.get(
+        "ELEVENLABS_VOICE_ID",
+        "EXAVITQu4vr4xnSDxMaL",
+    )
 
     logger.info(
         "plugin_config",
         deepgram_key_set=bool(deepgram_api_key),
         gemini_key_set=bool(gemini_api_key),
-        rumik_key_set=bool(rumik_api_key),
+        elevenlabs_key_set=bool(elevenlabs_api_key),
     )
 
     session = AgentSession(
@@ -385,14 +401,10 @@ async def entrypoint(ctx: JobContext) -> None:
             model="gemini-2.5-flash",
             api_key=gemini_api_key,
         ),
-        tts=RumikTTS(
-            api_key=rumik_api_key,
-            model="mulberry",
-            speaker="noah",
-            description=(
-                "a professional male voice, calm, conversational, "
-                "like an interviewer"
-            ),
+        tts=ElevenLabsRESTTTS(
+            api_key=elevenlabs_api_key,
+            voice_id=elevenlabs_voice_id,
+            model_id="eleven_flash_v2_5",
         ),
         vad=silero.VAD.load(
             min_speech_duration=0.3,
@@ -422,7 +434,7 @@ async def entrypoint(ctx: JobContext) -> None:
         )
     )
     logger.info("greeting_generated", room=ctx.room.name)
-    agent._last_agent_end_ms = int(time.time() * 1000)
+    agent._last_agent_end_ms = agent._elapsed_ms()
 
     # LiveKit awaits shutdown callbacks before terminating the job process.
     # A detached task here can be cancelled before it persists the final state.
@@ -612,5 +624,13 @@ def _push_live_signal(
         logger.exception("push_live_signal_failed")
 
 
+def _worker_options() -> WorkerOptions:
+    """Keep the job alive while deterministic post-call scoring is persisted."""
+    return WorkerOptions(
+        entrypoint_fnc=entrypoint,
+        shutdown_process_timeout=180.0,
+    )
+
+
 if __name__ == "__main__":
-    cli.run_app(WorkerOptions(entrypoint_fnc=entrypoint))
+    cli.run_app(_worker_options())

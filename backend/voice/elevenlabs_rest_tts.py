@@ -1,26 +1,23 @@
-"""ElevenLabs TTS via REST API instead of WebSocket.
-
-The LiveKit ElevenLabs plugin uses WebSocket streaming, which gets 403
-from some networks. This wrapper uses the REST API (which works) and
-wraps it in the LiveKit TTS interface so it drops in as a replacement.
-"""
+"""ElevenLabs REST TTS adapter for LiveKit's PCM audio emitter."""
 
 from __future__ import annotations
 
 import os
-import time
+import uuid
 
 import httpx
 import structlog
 from livekit.agents import tts as tts_mod
 from livekit.agents.tts import (
     TTS,
-    SynthesizedAudio,
     TTSCapabilities,
 )
 from livekit.agents.types import APIConnectOptions
 
 logger = structlog.get_logger(__name__)
+
+SAMPLE_RATE = 24_000
+NUM_CHANNELS = 1
 
 
 class ElevenLabsRESTTTS(TTS):
@@ -31,14 +28,14 @@ class ElevenLabsRESTTTS(TTS):
         *,
         voice_id: str = "EXAVITQu4vr4xnSDxMaL",
         api_key: str | None = None,
-        model_id: str = "eleven_turbo_v2_5",
+        model_id: str = "eleven_flash_v2_5",
     ) -> None:
         super().__init__(
             capabilities=TTSCapabilities(
                 streaming=False,
             ),
-            sample_rate=44100,
-            num_channels=1,
+            sample_rate=SAMPLE_RATE,
+            num_channels=NUM_CHANNELS,
         )
         self._voice_id = voice_id
         self._api_key = api_key or os.environ.get("ELEVENLABS_API_KEY", "")
@@ -81,7 +78,7 @@ class _RESTChunkedStream(tts_mod.ChunkedStream):
             headers = {
                 "xi-api-key": self._tts._api_key,
                 "Content-Type": "application/json",
-                "Accept": "audio/mpeg",
+                "Accept": "audio/pcm",
             }
             payload = {
                 "text": self._text,
@@ -97,7 +94,11 @@ class _RESTChunkedStream(tts_mod.ChunkedStream):
 
             async with httpx.AsyncClient() as client:
                 response = await client.post(
-                    url, headers=headers, json=payload, timeout=30
+                    url,
+                    params={"output_format": "pcm_24000"},
+                    headers=headers,
+                    json=payload,
+                    timeout=30,
                 )
                 response.raise_for_status()
 
@@ -107,15 +108,14 @@ class _RESTChunkedStream(tts_mod.ChunkedStream):
                     audio_bytes=len(audio_data),
                 )
 
-                output_emitter.emit(
-                    SynthesizedAudio(
-                        data=audio_data,
-                        sample_rate=44100,
-                        num_channels=1,
-                        frame_id=0,
-                        timestamp=time.time(),
-                    )
+                output_emitter.initialize(
+                    request_id=f"elevenlabs-{uuid.uuid4().hex[:8]}",
+                    sample_rate=SAMPLE_RATE,
+                    num_channels=NUM_CHANNELS,
+                    mime_type="audio/pcm",
+                    stream=False,
                 )
+                output_emitter.push(audio_data)
                 output_emitter.flush()
 
         except Exception as e:

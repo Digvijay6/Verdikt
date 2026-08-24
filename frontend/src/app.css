@@ -220,6 +220,9 @@
   .nb-input:focus {
     border-color: var(--color-edge);
   }
+  select.nb-input {
+    cursor: pointer;
+  }
 
   /* --- text ------------------------------------------------------------- */
 
@@ -357,6 +360,14 @@
     padding-right: 0;
   }
 
+  /* The final content tab has no inactive sheet after it, so its right edge
+     should meet the panel border without a decorative wedge showing behind. */
+  .folder-strip:not(.folder-strip-dark):has(
+      .folder-tab:last-of-type[aria-selected="true"]
+    ) {
+    padding-right: 0;
+  }
+
   /* When the first top-level tab is active, its lower-left point is the start
      of the page sheet. Cancel the nav padding and the strip's normal inset so
      both edges land on the same vertical line. Nested tab strips keep their
@@ -365,12 +376,9 @@
     margin-left: -1.25rem;
   }
 
-  /* Content tabs sit directly on their panel rather than inside app-nav
-     padding. When the first one is active, remove their normal content inset
-     so its outside edge starts on the panel's left border. */
-  .folder-strip:not(.folder-strip-dark):has(
-      .folder-tab:first-of-type[aria-selected="true"]
-    ) {
+  /* Content tabs own the panel's top-left edge in either state, matching the
+     app nav's relationship to the page sheet. */
+  .folder-strip:not(.folder-strip-dark) {
     margin-left: 0;
   }
 
@@ -381,8 +389,7 @@
     border-top-left-radius: 0;
   }
 
-  .folder-strip:has(.folder-tab:first-of-type[aria-selected="true"])
-    + .nb-tabpanel {
+  .folder-strip:not(.folder-strip-dark) + .nb-tabpanel {
     border-top-left-radius: 0;
   }
 
@@ -441,6 +448,15 @@
      only across its own width, leaving one connected hairline after it. */
   .folder-strip:not(.folder-strip-dark) .folder-strip-shape::after {
     bottom: var(--edge-w);
+  }
+
+  /* With Rubric selected, the exposed Pipeline sheet begins on the panel's
+     vertical edge instead of floating one slant-width to its right. */
+  .folder-strip:not(.folder-strip-dark):has(
+      .folder-tab:last-of-type[aria-selected="true"]
+    )
+    .folder-strip-shape {
+    left: 0;
   }
 
   .folder-tab {
@@ -519,6 +535,19 @@
      open bottom corners stay square and attached to the page. The polygon
      declarations above remain the fallback for older browsers. */
   @supports (clip-path: shape(from 0 0, line to 100% 0, close)) {
+    .folder-strip:not(.folder-strip-dark) .folder-strip-shape,
+    .folder-strip:not(.folder-strip-dark) .folder-strip-shape::after {
+      clip-path: shape(
+        from 0 0,
+        line to calc(100% - var(--strip-end) - var(--tab-corner)) 0,
+        curve to calc(100% - var(--strip-end) + 0.1rem) var(--tab-corner)
+          with calc(100% - var(--strip-end)) 0 from origin,
+        line to 100% 100%,
+        line to 0 100%,
+        close
+      );
+    }
+
     .folder-strip-dark .folder-strip-shape,
     .folder-strip-dark .folder-strip-shape::after {
       clip-path: shape(
@@ -537,6 +566,14 @@
     .folder-strip-dark:has(.folder-tab:last-of-type[aria-current="page"])
       .folder-strip-shape,
     .folder-strip-dark:has(.folder-tab:last-of-type[aria-current="page"])
+      .folder-strip-shape::after,
+    .folder-strip:not(.folder-strip-dark):has(
+        .folder-tab:last-of-type[aria-selected="true"]
+      )
+      .folder-strip-shape,
+    .folder-strip:not(.folder-strip-dark):has(
+        .folder-tab:last-of-type[aria-selected="true"]
+      )
       .folder-strip-shape::after {
       clip-path: shape(
         from 0 100%,

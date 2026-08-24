@@ -63,6 +63,8 @@ job created -> requirements extracted from the JD by Gemini
 - Deterministic hard checks, deliberately permissive on ambiguity (D18)
 - LLM screen with required evidence quotes and provenance
 - Dashboard tiles, review queue, decisions recording `decided_by`
+- Pipeline/Rubric folder tabs now use the same connected-edge geometry as the
+  Jobs/Leaderboard navigation in both active states.
 - `intake/question_builder.py` — ADK workflow (D9): SequentialAgent ->
   LlmAgent -> LoopAgent, 4 LLM sub-agents. Produces `job.rubric`: competencies,
   BARS anchors, weights. **Not questions** (D40)
@@ -80,10 +82,14 @@ job created -> requirements extracted from the JD by Gemini
 - `api/routers/insights.py` — org-scoped leaderboard and interview detail
 - Recruiter frontend is implemented: `/leaderboard/:jobId` provides job-scoped
   ranking, search, review filtering, summary counts, percentile and all fixed
-  rubric dimensions. `/leaderboard/:jobId/candidates/:interviewId` provides the
-  scored candidate detail with holistic strengths/concerns, review triggers,
-  integrity evidence, per-question quotes/rationales, and model/prompt
-  provenance. Null dimensions are shown as not applicable, never as zero.
+  rubric dimensions. It also charts composite-score distribution, applicable
+  dimension averages, recommendation mix, and human-review mix from the same
+  leaderboard response. KPI and analytics cards use the product's lime,
+  lavender, ink, and offset-backed tile treatment. `/leaderboard/:jobId/candidates/:interviewId`
+  provides the scored candidate detail with holistic strengths/concerns, review
+  triggers, integrity evidence, per-question quotes/rationales, and
+  model/prompt provenance. Null dimensions are shown as not applicable, never
+  as zero.
 - Candidate detail now includes the persisted recruiter score assistant.
   `GET/POST /insights/interviews/{interview_id}/chat` is recruiter- and
   org-scoped; an ADK `LlmAgent` receives the full interview dossier in user

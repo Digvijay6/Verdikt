@@ -63,6 +63,8 @@ job created -> requirements extracted from the JD by Gemini
 - Deterministic hard checks, deliberately permissive on ambiguity (D18)
 - LLM screen with required evidence quotes and provenance
 - Dashboard tiles, review queue, decisions recording `decided_by`
+- Pipeline/Rubric folder tabs now use the same connected-edge geometry as the
+  Jobs/Leaderboard navigation in both active states.
 - `intake/question_builder.py` — ADK workflow (D9): SequentialAgent ->
   LlmAgent -> LoopAgent, 4 LLM sub-agents. Produces `job.rubric`: competencies,
   BARS anchors, weights. **Not questions** (D40)

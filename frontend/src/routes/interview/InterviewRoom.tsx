@@ -139,7 +139,7 @@ function LiveKitRoomWrapper({
     token: connection.access_token,
   };
 
-  const { room } = useLiveKitRoom(roomProps);
+  const room = useLiveKitRoom(roomProps);
 
   // Subscribe to data messages (transcript + live signals from the agent)
   useEffect(() => {

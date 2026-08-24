@@ -40,6 +40,7 @@ export class ProctorClient {
   private rafId: number | null = null;
   private lastRafTime = 0;
   private cameraLabels: string[] = [];
+  private monitors = 1;
   private destroyed = false;
 
   constructor(orgId: string, interviewId: string, apiUrl: string) {
@@ -198,9 +199,9 @@ export class ProctorClient {
       const track = stream.getVideoTracks()[0];
       const settings = track.getSettings();
 
-      // Detection is via logicalSurface below. A `monitors` counter was
-      // assigned here and never read, so multiple-monitor counting was never
-      // actually implemented - only virtual-display detection is.
+      if (settings.displaySurface === "monitor") {
+        this.monitors = 1;
+      }
 
       // Check for virtual display
       if ((settings as MediaTrackSettings & { logicalSurface?: boolean }).logicalSurface) {

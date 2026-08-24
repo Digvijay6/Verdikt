@@ -1,50 +1,72 @@
 """LANE 2 — LiveKit voice worker.
 
-Run: python -m voice.agent dev
+Uses LiveKit's AgentSession with cascaded STT→LLM→TTS pipeline.
+The AgentSession handles turn detection, interruptions, and the
+conversation loop. The system prompt contains the full interview
+guide so the LLM conducts the interview autonomously.
 
-Uses the cascaded STT -> LLM -> TTS pipeline (not speech-to-speech), so:
-  - on_user_turn_completed fires after each candidate answer
-  - the state machine decides: follow up, advance, or close
-  - generate_reply speaks the next question/follow-up
-  - live scoring fires per turn (off-thread)
-  - on room disconnect, the post-call scoring pipeline runs
+Transcript data is sent to the frontend via the LiveKit data channel.
+Post-call scoring runs on room disconnect.
 """
 
 from __future__ import annotations
 
 import asyncio
 import json
+import logging
+import os
 import time
 from datetime import UTC, datetime
+from pathlib import Path
 
-import structlog
-from livekit.agents import (
+# Load .env BEFORE any LiveKit/Deepgram/Rumik imports.
+# The worker uses forkserver multiprocessing, which spawns fresh Python
+# processes that do NOT inherit shell-exported env vars. Loading .env
+# here ensures all child processes have the keys.
+from dotenv import load_dotenv
+
+_env_path = Path(__file__).resolve().parents[1] / ".env"
+load_dotenv(_env_path)
+
+# LiveKit dev mode enables root DEBUG logging. HTTP/2 protocol loggers include
+# raw authorization headers at that level, so keep them above DEBUG always.
+for _logger_name in ("hpack", "h2", "httpcore", "httpx"):
+    logging.getLogger(_logger_name).setLevel(logging.WARNING)
+
+import structlog  # noqa: E402
+from livekit.agents import (  # noqa: E402
     Agent,
     AgentSession,
     JobContext,
+    StopResponse,
     WorkerOptions,
     cli,
 )
-from livekit.agents.llm import ChatContext, ChatMessage
-from livekit.plugins import silero
+from livekit.agents.llm import ChatContext, ChatMessage  # noqa: E402
+from livekit.plugins import silero  # noqa: E402
 
-from shared.db import db
-from shared.models.interview import (
+from shared.db import db  # noqa: E402
+from shared.models.interview import (  # noqa: E402
+    IntegrityEvent,
     InterviewPackage,
     TranscriptTurn,
 )
-from shared.models.scoring import LiveSignal
-from voice.interview import InterviewStateMachine
-from voice.proctor import aggregate_integrity
-from voice.scoring import run_postcall_pipeline, score_live
+from shared.models.scoring import LiveSignal  # noqa: E402
+from voice.interview import InterviewStateMachine, Phase, TurnRecord  # noqa: E402
+from voice.proctor import aggregate_integrity  # noqa: E402
+from voice.scoring import run_postcall_pipeline, score_live  # noqa: E402
+from voice.scoring.persistence import persist_result  # noqa: E402
 
 logger = structlog.get_logger(__name__)
 
 
 class InterviewerAgent(Agent):
-    """The voice interviewer. Uses the cascaded pipeline so
-    on_user_turn_completed fires after each answer and the state machine
-    controls the question flow."""
+    """The voice interviewer.
+
+    The Python state machine owns question order and records every answer.
+    The LLM handles the greeting and candidate question period, while exact
+    interview questions and follow-ups are spoken with ``session.say``.
+    """
 
     def __init__(
         self,
@@ -57,8 +79,6 @@ class InterviewerAgent(Agent):
         prompt_path = repo_root / "llm" / "prompts" / "interviewer-system.v1.md"
         system_prompt = prompt_path.read_text()
 
-        # Build a rich system prompt with job context, resume, and the
-        # question guide. The LLM uses this to conduct the interview.
         question_guide = self._build_question_guide(package)
         resume_context = self._build_resume_context(package)
         full_prompt = (
@@ -69,10 +89,9 @@ class InterviewerAgent(Agent):
             f"## Candidate Resume Summary\n"
             f"{resume_context}\n\n"
             f"## Interview Questions\n"
-            f"Ask these questions in order, one at a time. After each answer, "
-            f"ask a follow-up if the answer is shallow (max 2 per question), "
-            f"then move to the next question. After all questions, thank the "
-            f"candidate and end the interview.\n\n"
+            f"These are the questions managed by the application state machine. "
+            f"Do not select or reorder them yourself. During the closing question "
+            f"period, follow the closing sequence in the system instructions.\n\n"
             f"{question_guide}"
         )
 
@@ -120,62 +139,135 @@ class InterviewerAgent(Agent):
     async def on_user_turn_completed(
         self, turn_ctx: ChatContext, new_message: ChatMessage
     ) -> None:
-        """Candidate finished speaking — capture answer, send transcript, advance."""
+        """Record the turn and deterministically select the next spoken prompt."""
         transcript = new_message.text_content or ""
         if not transcript.strip():
             return
 
         now_ms = int(time.time() * 1000)
 
-        # Record in the state machine
+        if self._sm.phase is Phase.GREETING:
+            await self._record_candidate_transcript(transcript, now_ms, question_id=None)
+            self._sm.start()
+            await self._say_question(self._sm.current_question())
+            raise StopResponse
+
+        if self._sm.phase in (Phase.CLOSING, Phase.DONE):
+            await self._record_candidate_transcript(transcript, now_ms, question_id=None)
+            turn_ctx.add_message(
+                role="system",
+                content=(
+                    "The interview questions are complete. Answer the candidate's "
+                    "question briefly using only the supplied job context. If they "
+                    "have no question, or after answering, close warmly, say the "
+                    "recruiter will follow up, and ask them to click End call."
+                ),
+            )
+            return
+
+        q = self._sm.current_question()
+        if q is None:
+            self._sm.phase = Phase.CLOSING
+            await self._record_candidate_transcript(transcript, now_ms, question_id=None)
+            await self._say_closing_question()
+            raise StopResponse
+
+        answering_follow_up = (
+            self._sm._current_turn is not None
+            and self._sm._current_turn.followup_count
+            > len(self._sm._current_turn.followup_answers)
+        )
+        if answering_follow_up:
+            self._sm.record_followup(transcript)
+            await self._record_candidate_transcript(
+                transcript,
+                now_ms,
+                question_id=q.id,
+            )
+            self._sm.advance()
+            await self._say_next_question_or_close()
+            raise StopResponse
+
+        # The live score arrives asynchronously, so use the local shallow-answer
+        # check for the immediate follow-up decision and update the stored turn
+        # with the model score when it arrives.
         self._sm.record_answer(
             transcript=transcript,
-            live_correctness=0,
+            live_correctness=100,
             answer_start_ms=self._turn_start_ms,
             answer_end_ms=now_ms,
         )
-
-        # Record transcript turn
-        q = self._sm.current_question()
-        turn = TranscriptTurn(
-            speaker="candidate",
-            text=transcript,
-            start_ms=self._turn_start_ms,
-            end_ms=now_ms,
-            question_id=q.id if q else None,
+        recorded_turn = self._sm._current_turn
+        await self._record_candidate_transcript(
+            transcript,
+            now_ms,
+            question_id=q.id,
         )
-        self._transcript.append(turn)
 
-        # Send transcript to frontend via LiveKit data channel
-        await self._publish_transcript(turn)
-
-        # Fire live scoring off-thread
-        if q:
-            asyncio.create_task(self._fire_live_score(transcript, q))
-
-        # Decide next action and speak it
         if self._sm.should_follow_up():
             follow_up = self._sm.get_follow_up_prompt()
-            self._last_agent_end_ms = now_ms
-            if self._session and follow_up:
-                await self._session.generate_reply(
-                    instructions=f"Ask this follow-up: {follow_up}"
-                )
+            await self._say_scripted(follow_up, question_id=q.id)
         else:
             self._sm.advance()
-            next_q = self._sm.current_question()
-            self._last_agent_end_ms = now_ms
-            if next_q is not None and self._session:
-                await self._session.generate_reply(
-                    instructions=f"Ask this question: {next_q.prompt}"
-                )
-            elif next_q is None and self._session:
-                await self._session.generate_reply(
-                    instructions=(
-                        "Thank the candidate for their time, tell them the "
-                        "recruiter will follow up, and end the interview."
-                    )
-                )
+            await self._say_next_question_or_close()
+
+        if recorded_turn is not None:
+            asyncio.create_task(self._fire_live_score(transcript, q, recorded_turn))
+        raise StopResponse
+
+    async def _record_candidate_transcript(
+        self,
+        text: str,
+        end_ms: int,
+        *,
+        question_id: str | None,
+    ) -> None:
+        turn = TranscriptTurn(
+            speaker="candidate",
+            text=text,
+            start_ms=self._turn_start_ms,
+            end_ms=end_ms,
+            question_id=question_id,
+        )
+        self._transcript.append(turn)
+        await self._publish_transcript(turn)
+
+    async def _say_question(self, question) -> None:
+        if question is None:
+            await self._say_closing_question()
+            return
+        await self._say_scripted(question.prompt, question_id=question.id)
+
+    async def _say_next_question_or_close(self) -> None:
+        next_question = self._sm.current_question()
+        if next_question is None:
+            await self._say_closing_question()
+        else:
+            await self._say_question(next_question)
+
+    async def _say_closing_question(self) -> None:
+        await self._say_scripted(
+            "That's all the interview questions for this round. "
+            "Do you have any questions for me?",
+            question_id=None,
+        )
+
+    async def _say_scripted(self, text: str, *, question_id: str | None) -> None:
+        if not self._session or not text:
+            return
+        now_ms = int(time.time() * 1000)
+        turn = TranscriptTurn(
+            speaker="agent",
+            text=text,
+            start_ms=self._last_agent_end_ms,
+            end_ms=now_ms,
+            question_id=question_id,
+        )
+        self._transcript.append(turn)
+        await self._publish_transcript(turn)
+        self._session.say(text, allow_interruptions=True)
+        self._last_agent_end_ms = now_ms
+        self._turn_start_ms = now_ms
 
     async def _publish_transcript(self, turn: TranscriptTurn) -> None:
         """Send a transcript turn to the frontend via LiveKit data channel."""
@@ -184,7 +276,6 @@ class InterviewerAgent(Agent):
         try:
             room = self._session.room
             if room and room.local_participant:
-                import json
                 data = json.dumps({
                     "type": "transcript",
                     "speaker": turn.speaker,
@@ -195,22 +286,12 @@ class InterviewerAgent(Agent):
         except Exception:
             logger.exception("publish_transcript_failed")
 
-    async def on_agent_speech_committed(self, message: ChatMessage) -> None:
-        """Agent finished speaking — record and send transcript to frontend."""
-        text = message.text_content or ""
-        if not text.strip():
-            return
-        now_ms = int(time.time() * 1000)
-        turn = TranscriptTurn(
-            speaker="agent",
-            text=text,
-            start_ms=self._last_agent_end_ms,
-            end_ms=now_ms,
-        )
-        self._transcript.append(turn)
-        await self._publish_transcript(turn)
-
-    async def _fire_live_score(self, transcript: str, question) -> None:
+    async def _fire_live_score(
+        self,
+        transcript: str,
+        question,
+        recorded_turn: TurnRecord,
+    ) -> None:
         """Score the answer for correctness in real time (off-thread)."""
         try:
             signal, _ = await asyncio.to_thread(
@@ -223,13 +304,14 @@ class InterviewerAgent(Agent):
             signal.question_id = question.id
             self._live_signals.append(signal)
 
-            if self._sm._current_turn is not None:
-                self._sm._current_turn.live_correctness = signal.correctness
+            recorded_turn.live_correctness = signal.correctness
 
             await asyncio.to_thread(
                 _push_live_signal,
+                self._package.org_id,
                 self._package.interview_id,
                 signal,
+                question.order,
             )
         except Exception:
             logger.exception("live_scoring_failed")
@@ -240,66 +322,17 @@ class InterviewerAgent(Agent):
     def get_live_signals(self) -> list[LiveSignal]:
         return list(self._live_signals)
 
-    def get_correctness_scores(self) -> dict[str, int]:
-        return {s.question_id: s.correctness for s in self._live_signals}
-
-
-async def _run_postcall(
-    package: InterviewPackage,
-    sm: InterviewStateMachine,
-    agent: InterviewerAgent,
-    application_id: str = "",
-) -> None:
-    """Post-call pipeline — runs on room disconnect."""
-    try:
-        if sm._current_turn is not None and sm._current_turn.answer_text:
-            sm.advance()
-        sm.close()
-
-        integrity = aggregate_integrity(
-            org_id=package.org_id,
-            browser_events=agent.get_correctness_scores(),
-            state_machine=sm,
-            answer_correctness_scores=agent.get_correctness_scores(),
-        )
-
-        result = await run_postcall_pipeline(
-            package=package,
-            state_machine=sm,
-            transcript=agent.get_transcript(),
-            integrity=integrity,
-            application_id="",  # fetched inside _write_interview_result
-        )
-
-        await asyncio.to_thread(
-            _write_interview_result,
-            package.interview_id,
-            package.org_id,
-            package.job_id,
-            result,
-            agent.get_transcript(),
-            agent.get_live_signals(),
-        )
-
-        logger.info(
-            "interview_completed",
-            interview_id=package.interview_id,
-            overall=result.overall,
-            composite_score=result.composite_score,
-            recommendation=result.recommendation.value,
-            needs_human_review=result.needs_human_review,
-        )
-    except Exception:
-        logger.exception("postcall_pipeline_failed")
-
 
 async def entrypoint(ctx: JobContext) -> None:
     """Join the assigned room and conduct the interview."""
     await ctx.connect()
 
-    raw_metadata = ctx.job.metadata or ""
-    if not raw_metadata and ctx.room:
-        raw_metadata = ctx.room.metadata or ""
+    # Read InterviewPackage from room metadata
+    raw_metadata = ""
+    if hasattr(ctx.room, "metadata") and ctx.room.metadata:
+        raw_metadata = ctx.room.metadata
+    if not raw_metadata and hasattr(ctx.job, "metadata") and ctx.job.metadata:
+        raw_metadata = ctx.job.metadata
 
     if not raw_metadata:
         logger.error("no_interview_package", room=ctx.room.name if ctx.room else "?")
@@ -314,39 +347,52 @@ async def entrypoint(ctx: JobContext) -> None:
     )
 
     sm = InterviewStateMachine(questions=package.questions)
-    sm.start()
+
+    # Set the agent's display name
+    try:
+        await ctx.room.local_participant.set_name("Verdikt")
+    except Exception:
+        logger.warning("failed to set agent name to Verdikt")
 
     # Cascaded STT (Deepgram) -> LLM (Gemini) -> TTS (ElevenLabs) pipeline.
-    # This means on_user_turn_completed fires after each answer, giving
-    # the state machine control over question flow.
-    #
-    # Turn detection + interruption handling:
-    # - VAD (silero) detects speech onset/end
-    # - min_silence_duration=1.5s: candidate must pause 1.5s before we
-    #   consider their turn done (avoids cutting off mid-thought)
-    # - allow_interruptions=True: candidate can barge in while the agent
-    #   is speaking — the agent stops immediately and listens
-    # - min_endpointing_delay: small delay after VAD fires to avoid
-    #   false triggers on breaths/pauses
-    import os
-
-    from livekit.plugins import deepgram, elevenlabs
+    # The AgentSession handles turn detection, interruptions, and the
+    # conversation loop. The system prompt contains the full interview
+    # guide so the LLM conducts the interview autonomously.
+    from livekit.plugins import deepgram
     from livekit.plugins import google as lk_google
+
+    from voice.rumik_tts import RumikTTS
+
+    deepgram_api_key = os.environ.get("DEEPGRAM_API_KEY", "")
+    gemini_api_key = os.environ.get("GEMINI_API_KEY", "")
+    rumik_api_key = os.environ.get("RUMIK_API_KEY", "")
+
+    logger.info(
+        "plugin_config",
+        deepgram_key_set=bool(deepgram_api_key),
+        gemini_key_set=bool(gemini_api_key),
+        rumik_key_set=bool(rumik_api_key),
+    )
 
     session = AgentSession(
         stt=deepgram.STT(
             model="nova-3",
             interim_results=True,
             smart_format=True,
-            api_key=os.environ.get("DEEPGRAM_API_KEY") or None,
+            api_key=deepgram_api_key or None,
         ),
         llm=lk_google.LLM(
             model="gemini-2.5-flash",
-            api_key=os.environ.get("GEMINI_API_KEY", ""),
+            api_key=gemini_api_key,
         ),
-        tts=elevenlabs.TTS(
-            voice_id=os.environ.get("ELEVENLABS_VOICE_ID") or "EXAVITQu4vr4xnSDxMaL",
-            api_key=os.environ.get("ELEVENLABS_API_KEY") or None,
+        tts=RumikTTS(
+            api_key=rumik_api_key,
+            model="mulberry",
+            speaker="noah",
+            description=(
+                "a professional male voice, calm, conversational, "
+                "like an interviewer"
+            ),
         ),
         vad=silero.VAD.load(
             min_speech_duration=0.3,
@@ -355,26 +401,19 @@ async def entrypoint(ctx: JobContext) -> None:
             max_buffered_speech=60.0,
             activation_threshold=0.5,
         ),
-        turn_detection=None,  # use VAD-based turn detection
         allow_interruptions=True,
         min_endpointing_delay=0.5,
     )
 
     agent = InterviewerAgent(package=package, state_machine=sm)
 
+    logger.info("starting_session", room=ctx.room.name)
     await session.start(agent=agent, room=ctx.room)
     agent.set_session(session)
+    logger.info("session_started", room=ctx.room.name)
 
-    # Set the agent's display name to "Verdikt" so it shows in the UI
-    try:
-        await ctx.room.local_participant.set_name("Verdikt")
-    except Exception:
-        logger.warning("failed to set agent name to Verdikt")
-
-    # Greet, introduce as Verdikt, ask for intro — the system prompt handles
-    # the flow: greet → intro → small talk → transition to questions.
-    # The state machine's first question is asked by the LLM naturally after
-    # the small talk, driven by the question guide in the system prompt.
+    # Greet and start the interview — the system prompt handles the rest
+    logger.info("generating_greeting", room=ctx.room.name)
     await session.generate_reply(
         instructions=(
             "Greet the candidate, introduce yourself as Verdikt, and ask "
@@ -382,103 +421,196 @@ async def entrypoint(ctx: JobContext) -> None:
             "questions yet — just the intro and small talk."
         )
     )
+    logger.info("greeting_generated", room=ctx.room.name)
     agent._last_agent_end_ms = int(time.time() * 1000)
 
-    # On room disconnect — run the post-call pipeline.
-    # LiveKit's Python SDK requires SYNC callbacks for room events.
-    def on_disconnect() -> None:
-        logger.info("room_disconnected", interview_id=package.interview_id)
-        asyncio.create_task(
-            _run_postcall(package, sm, agent)
+    # LiveKit awaits shutdown callbacks before terminating the job process.
+    # A detached task here can be cancelled before it persists the final state.
+    async def on_shutdown(reason: str) -> None:
+        logger.info(
+            "interview_session_ending",
+            interview_id=package.interview_id,
+            reason=reason,
+        )
+        await _run_postcall(package, sm, agent)
+
+    ctx.add_shutdown_callback(on_shutdown)
+
+
+async def _run_postcall(
+    package: InterviewPackage,
+    sm: InterviewStateMachine,
+    agent: InterviewerAgent,
+) -> None:
+    """Post-call pipeline — runs on room disconnect."""
+    try:
+        if sm._current_turn is not None and sm._current_turn.answer_text:
+            sm.advance()
+        sm.close()
+
+        turns = sm.get_all_turns()
+        if not turns:
+            await asyncio.to_thread(
+                _mark_interview_abandoned,
+                package.interview_id,
+                package.org_id,
+                agent.get_transcript(),
+            )
+            logger.info(
+                "interview_abandoned",
+                interview_id=package.interview_id,
+            )
+            return
+
+        browser_events = await asyncio.to_thread(
+            _load_integrity_events,
+            package.interview_id,
+            package.org_id,
+        )
+        live_correctness = {
+            signal.question_id: signal.correctness
+            for signal in agent.get_live_signals()
+        }
+
+        integrity = aggregate_integrity(
+            org_id=package.org_id,
+            browser_events=browser_events,
+            state_machine=sm,
+            answer_correctness_scores=live_correctness,
         )
 
-    ctx.room.on("disconnected", on_disconnect)
+        application_id = await asyncio.to_thread(
+            _load_application_id,
+            package.interview_id,
+            package.org_id,
+        )
+        result, scoring_input = await run_postcall_pipeline(
+            package=package,
+            state_machine=sm,
+            transcript=agent.get_transcript(),
+            integrity=integrity,
+            application_id=application_id,
+        )
+
+        await asyncio.to_thread(
+            persist_result,
+            scoring_input,
+            result,
+            agent.get_transcript(),
+        )
+
+        logger.info(
+            "interview_completed",
+            interview_id=package.interview_id,
+            overall=result.overall,
+            composite_score=result.composite_score,
+            recommendation=result.recommendation.value,
+            needs_human_review=result.needs_human_review,
+        )
+    except Exception:
+        logger.exception("postcall_pipeline_failed")
+        await asyncio.to_thread(
+            _mark_interview_scoring_failed,
+            package.interview_id,
+            package.org_id,
+            agent.get_transcript(),
+        )
 
 
-def _push_live_signal(interview_id: str, signal: LiveSignal) -> None:
+def _load_integrity_events(interview_id: str, org_id: str) -> list[IntegrityEvent]:
+    """Load the browser telemetry persisted during this interview."""
+    result = (
+        db().table("integrity_event")
+        .select("org_id,interview_id,type,severity,at_ms,detail")
+        .eq("org_id", org_id)
+        .eq("interview_id", interview_id)
+        .execute()
+    )
+    events: list[IntegrityEvent] = []
+    for row in result.data:
+        detail = row.get("detail", {})
+        if isinstance(detail, str):
+            try:
+                detail = json.loads(detail)
+            except json.JSONDecodeError:
+                detail = {}
+        events.append(IntegrityEvent.model_validate({**row, "detail": detail}))
+    return events
+
+
+def _load_application_id(interview_id: str, org_id: str) -> str:
+    result = (
+        db().table("interview")
+        .select("application_id")
+        .eq("org_id", org_id)
+        .eq("id", interview_id)
+        .limit(1)
+        .execute()
+    )
+    if not result.data:
+        raise ValueError(f"Interview {interview_id} not found for post-call scoring")
+    return result.data[0]["application_id"]
+
+
+def _mark_interview_abandoned(
+    interview_id: str,
+    org_id: str,
+    transcript: list[TranscriptTurn],
+) -> None:
+    """Finish an interview that ended before any scored answer was recorded."""
+    (
+        db().table("interview")
+        .update({
+            "status": "abandoned",
+            "ended_at": datetime.now(UTC).isoformat(),
+            "transcript": [turn.model_dump(mode="json") for turn in transcript],
+        })
+        .eq("org_id", org_id)
+        .eq("id", interview_id)
+        .execute()
+    )
+
+
+def _mark_interview_scoring_failed(
+    interview_id: str,
+    org_id: str,
+    transcript: list[TranscriptTurn],
+) -> None:
+    """End the session visibly when post-call scoring cannot finish."""
+    (
+        db().table("interview")
+        .update({
+            "status": "flagged",
+            "ended_at": datetime.now(UTC).isoformat(),
+            "transcript": [turn.model_dump(mode="json") for turn in transcript],
+        })
+        .eq("org_id", org_id)
+        .eq("id", interview_id)
+        .execute()
+    )
+
+
+def _push_live_signal(
+    org_id: str,
+    interview_id: str,
+    signal: LiveSignal,
+    order_index: int,
+) -> None:
     try:
         supabase = db()
-        supabase.table("question_instance").upsert({
-            "interview_id": interview_id,
-            "question_id": signal.question_id,
-            "live_signal": signal.model_dump(),
-        }).execute()
+        supabase.table("question_instance").upsert(
+            {
+                "org_id": org_id,
+                "interview_id": interview_id,
+                "question_id": signal.question_id,
+                "order_index": order_index,
+                "live_signal": signal.model_dump(),
+            },
+            on_conflict="interview_id,question_id",
+        ).execute()
     except Exception:
         logger.exception("push_live_signal_failed")
 
 
-def _write_interview_result(
-    interview_id: str,
-    org_id: str,
-    job_id: str,
-    result,
-    transcript: list[TranscriptTurn],
-    live_signals: list[LiveSignal],
-) -> None:
-    """Write the final interview result to Supabase.
-
-    Writes to three tables:
-    - interview: status, transcript, full result JSON
-    - interview_score: Lane 3 reads this for the leaderboard (via build_interview_score_row)
-    - question_instance: per-question scores
-    - integrity_event: proctoring events
-    """
-    supabase = db()
-
-    # Fetch application_id from the interview row
-    interview_row = supabase.table("interview").select("application_id").eq(
-        "id", interview_id
-    ).limit(1).execute()
-    application_id = interview_row.data[0]["application_id"] if interview_row.data else ""
-
-    # Stamp application_id onto the result so build_interview_score_row can use it
-    if not result.application_id:
-        result = result.model_copy(update={"application_id": application_id})
-
-    # 1. Update the interview row
-    supabase.table("interview").update({
-        "status": "completed",
-        "ended_at": datetime.now(UTC).isoformat(),
-        "transcript": json.dumps([t.model_dump() for t in transcript]),
-        "result": result.model_dump(mode="json"),
-        "model_id": "gemini-2.5-flash",
-    }).eq("id", interview_id).execute()
-
-    # 2. Write to interview_score (Lane 3 reads this for the leaderboard)
-    from voice.scoring.pipeline import build_score_row
-
-    score_row = build_score_row(result)
-    # Remove fields that come from the DB (id, created_at, updated_at)
-    score_row.pop("id", None)
-    score_row.pop("created_at", None)
-    score_row.pop("updated_at", None)
-    supabase.table("interview_score").upsert(score_row).execute()
-
-    # 3. Write per-question scores
-    for answer in result.answers:
-        supabase.table("question_instance").upsert({
-            "org_id": org_id,
-            "interview_id": interview_id,
-            "question_id": answer.question_id,
-            "answer_score": answer.model_dump(mode="json"),
-            "scored_at": datetime.now(UTC).isoformat(),
-            "model_id": answer.model_id,
-            "prompt_version": answer.prompt_version,
-        }).execute()
-
-    # 4. Write integrity events
-    for event in result.integrity.events:
-        supabase.table("integrity_event").insert({
-            "org_id": org_id,
-            "interview_id": interview_id,
-            "type": event.type.value,
-            "severity": event.severity,
-            "at_ms": event.at_ms,
-            "detail": json.dumps(event.detail),
-        }).execute()
-
-    logger.info("result_written", interview_id=interview_id)
-
-
 if __name__ == "__main__":
-    cli.run_app(WorkerOptions(entrypoint_fnc=entrypoint, agent_name="verdikt"))
+    cli.run_app(WorkerOptions(entrypoint_fnc=entrypoint))

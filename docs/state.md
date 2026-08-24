@@ -131,8 +131,45 @@ job created -> requirements extracted from the JD by Gemini
 Voice state machine, scoring pipeline, proctor, agent worker, redeem endpoint,
 room metadata, silero VAD. Eight commits unmerged. They have added
 `livekit-plugins-silero` and `structlog` to the `[voice]` extra.
-Its interview-completed hook still needs to invoke the shared one-prompt scorer;
-the job-id command is the executable integration path meanwhile.
+The interview-completed hook now invokes the shared one-prompt scorer and
+persists the normalized Lane 2 → Lane 3 handoff.
+
+The custom Rumik TTS adapter now initializes LiveKit's `AudioEmitter` as a
+single non-streaming segment before pushing PCM. A contract test covers the
+emitter path. The candidate room mounts LiveKit's remote-audio renderer and
+uses its data-channel hook; Chrome verification confirmed an unmuted, actively
+playing audio element receiving the generated Rumik greeting.
+
+The candidate room now requests camera and microphone through LiveKit, shows a
+local camera preview, and provides mute, camera, and End call controls. Ending
+the call or closing the tab disconnects the room; the worker awaits its
+shutdown callback and marks an interview with no scored answers `abandoned`
+instead of leaving it `in_progress`. Fullscreen and screen-share requests were
+removed from browser proctoring. The interviewer closing prompt now offers a
+candidate question period after the final configured question, then asks the
+candidate to click End call.
+
+Current verification constraints and issues:
+
+- The latest test package contained **9 questions**, not one. The worker
+  receives all nine and the state machine asks them in package order.
+- The Python state machine now owns question order. The introduction is not
+  scored; each primary and follow-up answer is tagged to its question before
+  the next prompt is spoken, and the final answer is committed before the
+  candidate question period.
+- Post-call scoring sends every recorded question through the canonical single
+  `score-interview` call, applies the deterministic v2 aggregate, then writes
+  `question_instance`, `question_scoring_claim`,
+  `question_conversation_turn`, `question_rubric_assessment`, and finally
+  `interview_score`. The recruiter-facing row is published last so Lane 3 does
+  not observe a partially persisted result.
+- The controlled Chrome profile exposes no `navigator.mediaDevices`, so its UI
+  and disconnect lifecycle were verified but a physical camera stream still
+  needs one manual test in normal Chrome.
+- Rumik currently returns `INSUFFICIENT_BALANCE`; live greeting audio cannot be
+  reverified until that account is funded.
+- HTTP/2 client loggers are clamped above DEBUG because protocol debug output
+  can include authorization headers.
 
 **One change waiting for them.** Their redeem assembles the `InterviewPackage`
 itself — fetching the application, validating `job.question_bank` into

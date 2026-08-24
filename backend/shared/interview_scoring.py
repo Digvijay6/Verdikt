@@ -129,9 +129,11 @@ def apply_rubric_to_result(
         seniority,
         hard_gate_applied=result.hard_gate_applied,
     )
+    aggregate_fields = summary.model_dump(exclude={"seniority"})
     return result.model_copy(
         update={
-            **summary.model_dump(),
+            **aggregate_fields,
+            "seniority_bucket": summary.seniority,
             "overall": composite_to_overall(summary.composite_score),
         }
     )
@@ -155,7 +157,9 @@ def build_interview_score_row(result: InterviewResult) -> dict[str, object]:
         "answers": [answer.model_dump(mode="json") for answer in result.answers],
         "rubric_version": result.rubric_version,
         "scored_at": result.scored_at.isoformat(),
-        "seniority_bucket": result.seniority.value if result.seniority else None,
+        "seniority_bucket": (
+            result.seniority_bucket.value if result.seniority_bucket else None
+        ),
         "technical_accuracy_score": result.technical_accuracy_score,
         "project_depth_score": result.project_depth_score,
         "followup_resilience_score": result.followup_resilience_score,

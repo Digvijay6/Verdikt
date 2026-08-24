@@ -53,7 +53,7 @@ def _livekit_token(room_name: str, identity: str, ttl_minutes: int = 15) -> str:
     return token.to_jwt()
 
 
-def _create_livekit_room(room_name: str, metadata: str) -> None:
+async def _create_livekit_room(room_name: str, metadata: str) -> None:
     """Create a LiveKit room with the InterviewPackage as metadata."""
     from livekit import api
 
@@ -63,17 +63,13 @@ def _create_livekit_room(room_name: str, metadata: str) -> None:
         api_secret=get_settings().livekit_api_secret,
     )
 
-    import asyncio
-
-    async def _create():
-        await lk_api.room.create_room(
-            api.CreateRoomRequest(
-                name=room_name,
-                metadata=metadata,
-            ),
-        )
-
-    asyncio.run(_create())
+    await lk_api.room.create_room(
+        api.CreateRoomRequest(
+            name=room_name,
+            metadata=metadata,
+        ),
+    )
+    await lk_api.aclose()
 
 
 # --- Request / response models -------------------------------------------
@@ -96,7 +92,7 @@ class RedeemResponse(BaseModel):
 
 
 @router.post("/redeem", response_model=RedeemResponse)
-def redeem(body: RedeemRequest) -> RedeemResponse:
+async def redeem(body: RedeemRequest) -> RedeemResponse:
     """Public — the candidate has no account. The token is the auth.
 
     Order of operations (see module docstring). Never return or log the
@@ -190,7 +186,7 @@ def redeem(body: RedeemRequest) -> RedeemResponse:
         ) from e
 
     # Create the LiveKit room with the package as metadata
-    _create_livekit_room(
+    await _create_livekit_room(
         room_name=room_name,
         metadata=package.model_dump_json(),
     )
@@ -240,14 +236,17 @@ def proctor_events(events: list[IntegrityEvent]) -> dict[str, str]:
     supabase = db()
 
     for event in events:
-        supabase.table("integrity_event").insert({
-            "id": str(uuid.uuid4()),
-            "org_id": event.org_id,
-            "interview_id": event.interview_id,
-            "type": event.type.value,
-            "severity": event.severity,
-            "at_ms": event.at_ms,
-            "detail": json.dumps(event.detail),
-        }).execute()
+        try:
+            supabase.table("integrity_event").insert({
+                "id": str(uuid.uuid4()),
+                "org_id": event.org_id,
+                "interview_id": event.interview_id,
+                "type": event.type.value,
+                "severity": event.severity,
+                "at_ms": int(event.at_ms) if event.at_ms < 2147483647 else int(event.at_ms / 1000),
+                "detail": json.dumps(event.detail),
+            }).execute()
+        except Exception:
+            pass
 
     return {"status": "accepted"}

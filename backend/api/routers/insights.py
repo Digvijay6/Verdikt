@@ -562,6 +562,14 @@ def _normalize_score_payload(
             stored_consistency if stored_consistency is not None else 100
         )
 
+    # `role_fit` is a not-null column, but payloads written while it was absent
+    # from InterviewResult do not carry it. Backfilled from the column rather
+    # than defaulted on the model, so a real stored value is never replaced by
+    # an invented one.
+    if normalized.get("role_fit") is None:
+        stored_role_fit = row.get("role_fit")
+        normalized["role_fit"] = stored_role_fit if stored_role_fit is not None else 3.0
+
     if "human_review_reasons" not in normalized:
         normalized["human_review_reasons"] = (
             normalized.get("review_reasons")

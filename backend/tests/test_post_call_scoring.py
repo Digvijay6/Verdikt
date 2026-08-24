@@ -80,7 +80,11 @@ def test_score_interview_uses_one_call_and_preserves_question_order() -> None:
                 question_id=question_id,
                 dimensions=[
                     DimensionScore(
-                        key="depth", score=4, evidence=evidence.quote, rationale=evidence.rationale
+                        key="depth",
+                        score=80,
+                        band="strong",
+                        evidence=evidence.quote,
+                        rationale=evidence.rationale,
                     )
                 ],
                 weighted_score=4.0,

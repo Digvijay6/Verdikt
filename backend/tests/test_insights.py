@@ -54,6 +54,9 @@ def _result(
         composite_score=composite_score,
         needs_human_review=needs_human_review,
         overall=overall,
+        # Required again: `interview_score.role_fit` is not-null, and the
+        # writer reads it off this model.
+        role_fit=overall,
         recommendation=recommendation,
         hard_gate_applied=hard_gate_applied,
         integrity=IntegrityReport(

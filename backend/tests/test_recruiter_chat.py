@@ -23,7 +23,10 @@ def test_recruiter_chat_agent_uses_versioned_registry_and_evidence_tools() -> No
     agent = build_agent()
 
     assert agent.model.model == "gemini-3.1-pro-preview"
-    assert agent.model.client_kwargs == {"api_key": "gemini"}
+    # Asserting the literal key made this pass only on machines with no real
+    # GEMINI_API_KEY configured, and fail on any machine actually set up to run
+    # the product. What matters is that a key is wired through at all.
+    assert "api_key" in agent.model.client_kwargs
     assert agent.output_key == "answer"
     assert {tool.__name__ for tool in agent.tools} == {
         "get_score_breakdown",

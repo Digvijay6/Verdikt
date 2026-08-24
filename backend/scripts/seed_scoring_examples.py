@@ -188,6 +188,18 @@ def _stable_id(kind: str, index: int) -> str:
     return str(uuid5(DEMO_NAMESPACE, f"{kind}-{index}"))
 
 
+def _band(score: int) -> str:
+    """Band label for a 0-100 score, per the table in docs/rubric.md.
+
+    Local rather than shared: nothing else needs it yet, and duplicating a
+    five-line mapping beats starting a utils module (rule 4).
+    """
+    for floor, label in ((90, "expert"), (70, "strong"), (50, "adequate"), (25, "weak")):
+        if score >= floor:
+            return label
+    return "poor"
+
+
 def _evidence(profile: dict, question_id: str) -> RubricEvidence:
     quote = (
         f"For {question_id}, I measured the baseline, implemented the change, "
@@ -215,7 +227,11 @@ def _answer(
         dimensions=[
             DimensionScore(
                 key="depth",
-                score=max(1, min(5, round(profile["depth"] / 20))),
+                # DimensionScore moved to 0-100; this was still dividing by 20
+                # for the old 1-5 scale, so every seeded demo scored 1-5 out of
+                # 100 and looked like a failing candidate.
+                score=profile["depth"],
+                band=_band(profile["depth"]),
                 evidence=evidence.quote,
                 rationale=evidence.rationale,
             )

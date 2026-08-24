@@ -49,7 +49,8 @@ def _answer(
         dimensions=[
             DimensionScore(
                 key="correctness",
-                score=4,
+                score=80,
+                band="strong",
                 evidence="I measured the latency before changing the cache policy.",
                 rationale="The answer provides a concrete technical decision.",
             )
@@ -179,6 +180,12 @@ def test_apply_rubric_populates_result_and_preserves_hard_gate() -> None:
         org_id="org-1",
         application_id="application-1",
         job_id="job-1",
+        # All three became required when InterviewResult moved to the 0-100
+        # rubric. `seniority` drives the composite weights, so it is not
+        # cosmetic — a fixture without it was never scoreable.
+        seniority="mid",
+        consistency_score=100,
+        transcript_summary="Candidate walked through one latency investigation.",
         answers=[_answer("q1", technical=95, depth=95, followup=95)],
         holistic=HolisticScore(
             score=5,

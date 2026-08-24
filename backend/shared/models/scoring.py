@@ -285,6 +285,12 @@ class InterviewResult(BaseModel):
     # Compatibility score for v1 consumers. New v2 results derive this from
     # composite_score using 1 + 4 * (composite / 100).
     overall: float = Field(ge=1.0, le=5.0)
+    # Restored: dropped from this model during a scoring.py merge, but
+    # `interview_score.role_fit` is still `not null check (between 1 and 5)`,
+    # and interview_scoring.build_interview_score_row() plus both scoring
+    # scripts still read `result.role_fit`. Without it no interview can be
+    # persisted at all — the writer raises before it reaches the database.
+    role_fit: float = Field(ge=1.0, le=5.0)
     percentile: float | None = Field(None, description="Within the same job only. Never cross-job.")
     recommendation: Recommendation
     needs_human_review: bool = False

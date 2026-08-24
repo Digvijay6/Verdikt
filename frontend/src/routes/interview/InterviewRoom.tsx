@@ -5,16 +5,16 @@
  */
 
 import { useState, useEffect, useRef, useCallback } from "react";
-import type { Dispatch, SetStateAction } from "react";
 import { useParams } from "react-router-dom";
 import {
-  DisconnectButton,
   LiveKitRoom,
   RoomAudioRenderer,
   TrackToggle,
   VideoTrack,
   useDataChannel,
   useLocalParticipant,
+  useRoomContext,
+  useTranscriptions,
 } from "@livekit/components-react";
 import { Track } from "livekit-client";
 
@@ -24,6 +24,8 @@ import { ProctorClient } from "../../lib/proctor";
 import { ConsentGate } from "../../components/interview/ConsentGate";
 import { LiveTranscript } from "../../components/interview/LiveTranscript";
 import { InterviewComplete } from "../../components/interview/InterviewComplete";
+import { toTranscriptEntries } from "../../components/interview/transcript";
+import { canEndCall } from "./endCall";
 
 interface RedeemResponse {
   interview_id: string;
@@ -34,18 +36,11 @@ interface RedeemResponse {
   resuming: boolean;
 }
 
-interface TranscriptEntry {
-  speaker: "agent" | "candidate";
-  text: string;
-  questionId?: string;
-}
-
 export default function InterviewRoom() {
   const { token } = useParams();
   const [phase, setPhase] = useState<"consent" | "connecting" | "live" | "done">("consent");
   const [error, setError] = useState<string | null>(null);
   const [connection, setConnection] = useState<RedeemResponse | null>(null);
-  const [transcript, setTranscript] = useState<TranscriptEntry[]>([]);
   const proctorRef = useRef<ProctorClient | null>(null);
 
   const handleConsent = async () => {
@@ -116,8 +111,6 @@ export default function InterviewRoom() {
       }}
     >
       <InterviewSession
-        transcript={transcript}
-        onTranscript={setTranscript}
         onInterviewEnd={handleInterviewEnd}
       />
     </LiveKitRoom>
@@ -125,12 +118,8 @@ export default function InterviewRoom() {
 }
 
 function InterviewSession({
-  transcript,
-  onTranscript,
   onInterviewEnd,
 }: {
-  transcript: TranscriptEntry[];
-  onTranscript: Dispatch<SetStateAction<TranscriptEntry[]>>;
   onInterviewEnd: () => void;
 }) {
   const {
@@ -140,20 +129,20 @@ function InterviewSession({
     lastCameraError,
     localParticipant,
   } = useLocalParticipant();
+  const room = useRoomContext();
+  const transcriptions = useTranscriptions({ room });
+  const transcript = toTranscriptEntries(
+    transcriptions,
+    room.localParticipant.identity,
+  );
+  const [questionsComplete, setQuestionsComplete] = useState(false);
 
   const handleData = useCallback(
     (message: { payload: Uint8Array }) => {
       try {
         const payload = JSON.parse(new TextDecoder().decode(message.payload));
-        if (payload.type === "transcript") {
-          onTranscript((previous) => [
-            ...previous,
-            {
-              speaker: payload.speaker,
-              text: payload.text,
-              questionId: payload.question_id,
-            },
-          ]);
+        if (payload.type === "questions_complete") {
+          setQuestionsComplete(true);
         } else if (payload.type === "interview_end") {
           onInterviewEnd();
         }
@@ -161,10 +150,15 @@ function InterviewSession({
         // Ignore malformed data-channel messages.
       }
     },
-    [onInterviewEnd, onTranscript],
+    [onInterviewEnd],
   );
 
   useDataChannel(handleData);
+
+  const handleEndCall = async () => {
+    if (!canEndCall(questionsComplete, window.confirm)) return;
+    await room.disconnect();
+  };
 
   return (
     <>
@@ -263,9 +257,13 @@ function InterviewSession({
           <TrackToggle className="nb-btn" source={Track.Source.Camera} showIcon={false}>
             {isCameraEnabled ? "Turn camera off" : "Turn camera on"}
           </TrackToggle>
-          <DisconnectButton className="nb-btn nb-btn-danger">
+          <button
+            type="button"
+            className="nb-btn nb-btn-danger"
+            onClick={handleEndCall}
+          >
             End call
-          </DisconnectButton>
+          </button>
         </div>
 
         <p

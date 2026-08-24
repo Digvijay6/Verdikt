@@ -159,6 +159,15 @@ class InterviewStateMachine:
     def is_done(self) -> bool:
         return self.phase in (Phase.CLOSING, Phase.DONE)
 
+    def is_complete(self) -> bool:
+        """Every configured question has a primary answer and closing was reached."""
+        if self.phase is not Phase.CLOSING or len(self.turns) != len(self.questions):
+            return False
+        return all(
+            turn.question_id == question.id and bool(turn.answer_text.strip())
+            for turn, question in zip(self.turns, self.questions, strict=True)
+        )
+
     def close(self) -> None:
         self.phase = Phase.DONE
 

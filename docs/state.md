@@ -143,11 +143,28 @@ extra because the worker imports it at runtime.
 The candidate room now requests camera and microphone through LiveKit, shows a
 local camera preview, and provides mute, camera, and End call controls. Ending
 the call or closing the tab disconnects the room; the worker awaits its
-shutdown callback and marks an interview with no scored answers `abandoned`
-instead of leaving it `in_progress`. Fullscreen and screen-share requests were
-removed from browser proctoring. The interviewer closing prompt now offers a
-candidate question period after the final configured question, then asks the
-candidate to click End call.
+shutdown callback and marks an interview that fails the completion gate
+`abandoned` instead of leaving it `in_progress`. Completion requires a non-empty
+primary response for every configured question plus entry into the candidate
+question period. Fullscreen and screen-share requests were removed from browser
+proctoring. The interviewer closing prompt now offers a candidate question
+period after the final configured question, then asks the candidate to click
+End call.
+
+The same room now renders LiveKit's native transcription stream in an
+accessible, auto-scrolling **Live transcript** panel. Agent and candidate turns
+are labelled `Verdikt` and `You`; interim text updates in place, and blank
+partials are omitted. This avoids a second custom data-channel transcript path
+and keeps the on-screen text aligned with the audio pipeline.
+
+The worker records LiveKit's delivered assistant messages, including generated
+greetings and interrupted speech, rather than the intended full script. It
+checkpoints the accumulated transcript to `interview.transcript` after every
+agent and candidate turn; a failed checkpoint is non-fatal because the next
+full snapshot and shutdown persistence retry it. Incomplete calls retain this
+transcript and any live signals but cannot run post-call scoring or publish an
+`interview_score`. The persistence boundary independently rejects a result that
+does not contain the complete configured question set.
 
 Current verification constraints and issues:
 
@@ -174,6 +191,14 @@ Current verification constraints and issues:
   not killed by LiveKit's 10-second default.
 - The frontend completed with no console errors. Its auth bootstrap emitted one
   non-blocking `Session lookup did not settle in time; continuing` warning.
+- The live transcript was browser-verified at desktop and 320 px widths: the
+  complete Verdikt greeting appeared incrementally, controls remained usable,
+  and End call reached the ended screen with no console errors.
+- End call now uses one native confirmation while questions remain; dismissing
+  it keeps the call active, accepting it disconnects immediately. Tab close is
+  never blocked. A real early-exit run persisted the generated greeting,
+  finished as `abandoned`, and produced neither a result nor an
+  `interview_score` row.
 - HTTP/2 client loggers are clamped above DEBUG because protocol debug output
   can include authorization headers.
 

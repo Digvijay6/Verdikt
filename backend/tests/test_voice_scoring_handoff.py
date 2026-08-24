@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
+import pytest
+
 from shared.models.interview import IntegrityReport, InterviewPackage, TranscriptTurn
 from shared.models.job import Question
 from shared.models.scoring import (
@@ -231,3 +233,14 @@ def test_persist_result_writes_lane_3_handoff_and_normalized_evidence() -> None:
     assert [call for call in client.calls if call.action in {"upsert", "update"}][-1].table == (
         "interview_score"
     )
+
+
+def test_persist_result_rejects_partial_interview_before_any_lane_3_write() -> None:
+    package = _package()
+    scoring_input = build_scoring_input(package, _completed_state(package), _transcript())
+    client = _FakeClient()
+
+    with pytest.raises(ValueError, match="complete question set"):
+        persist_result(scoring_input, _result(), _transcript(), client=client)
+
+    assert client.calls == []

@@ -77,6 +77,7 @@ class InterviewerAgent(Agent):
         self,
         package: InterviewPackage,
         state_machine: InterviewStateMachine,
+        room: object | None = None,
     ) -> None:
         from pathlib import Path
 
@@ -103,15 +104,28 @@ class InterviewerAgent(Agent):
         super().__init__(instructions=full_prompt, id="verdikt")
         self._package = package
         self._sm = state_machine
+        self._room = room
         self._session: AgentSession | None = None
         self._turn_start_ms = 0
         self._last_agent_end_ms = 0
         self._started_at_ms = int(time.time() * 1000)
         self._transcript: list[TranscriptTurn] = []
+        self._transcript_lock = asyncio.Lock()
+        self._transcript_tasks: set[asyncio.Task[None]] = set()
+        self._pending_agent_turns: list[tuple[str, str | None]] = []
         self._live_signals: list[LiveSignal] = []
 
     def set_session(self, session: AgentSession) -> None:
         self._session = session
+        session.on("conversation_item_added", self._on_conversation_item_added)
+
+    def _on_conversation_item_added(self, event: object) -> None:
+        item = getattr(event, "item", None)
+        if not isinstance(item, ChatMessage) or item.role != "assistant":
+            return
+        task = asyncio.create_task(self._record_agent_message(item))
+        self._transcript_tasks.add(task)
+        task.add_done_callback(self._transcript_tasks.discard)
 
     @staticmethod
     def _build_question_guide(package: InterviewPackage) -> str:
@@ -235,8 +249,52 @@ class InterviewerAgent(Agent):
             end_ms=end_ms,
             question_id=question_id,
         )
-        self._transcript.append(turn)
-        await self._publish_transcript(turn)
+        await self._record_transcript_turn(turn)
+
+    async def _record_agent_message(self, message: ChatMessage) -> None:
+        """Persist the text LiveKit reports as actually delivered to the candidate."""
+        text = (message.text_content or "").strip()
+        if not text:
+            return
+        question_id = None
+        if self._pending_agent_turns:
+            intended, pending_question_id = self._pending_agent_turns[0]
+            if intended.startswith(text) or text.startswith(intended):
+                self._pending_agent_turns.pop(0)
+                question_id = pending_question_id
+        now_ms = self._elapsed_ms()
+        await self._record_transcript_turn(
+            TranscriptTurn(
+                speaker="agent",
+                text=text,
+                start_ms=self._last_agent_end_ms,
+                end_ms=now_ms,
+                question_id=question_id,
+            )
+        )
+        self._last_agent_end_ms = now_ms
+        self._turn_start_ms = now_ms
+
+    async def _record_transcript_turn(self, turn: TranscriptTurn) -> None:
+        async with self._transcript_lock:
+            self._transcript.append(turn)
+            transcript = list(self._transcript)
+            try:
+                await asyncio.to_thread(
+                    _persist_interview_transcript,
+                    self._package.interview_id,
+                    self._package.org_id,
+                    transcript,
+                )
+            except Exception:
+                logger.exception(
+                    "incremental_transcript_persist_failed",
+                    interview_id=self._package.interview_id,
+                )
+
+    async def flush_transcript_tasks(self) -> None:
+        if self._transcript_tasks:
+            await asyncio.gather(*list(self._transcript_tasks), return_exceptions=True)
 
     async def _say_question(self, question) -> None:
         if question is None:
@@ -252,51 +310,33 @@ class InterviewerAgent(Agent):
             await self._say_question(next_question)
 
     async def _say_closing_question(self) -> None:
+        await self._publish_event({"type": "questions_complete"})
         await self._say_scripted(
             "That's all the interview questions for this round. "
             "Do you have any questions for me?",
             question_id=None,
         )
 
+    async def _publish_event(self, payload: dict[str, str]) -> None:
+        participant = getattr(self._room, "local_participant", None)
+        if participant is None:
+            return
+        try:
+            await participant.publish_data(json.dumps(payload).encode(), reliable=True)
+        except Exception:
+            logger.exception("publish_interview_event_failed", payload_type=payload["type"])
+
     async def _say_scripted(self, text: str, *, question_id: str | None) -> None:
         if not self._session or not text:
             return
-        now_ms = self._elapsed_ms()
-        turn = TranscriptTurn(
-            speaker="agent",
-            text=text,
-            start_ms=self._last_agent_end_ms,
-            end_ms=now_ms,
-            question_id=question_id,
-        )
-        self._transcript.append(turn)
-        await self._publish_transcript(turn)
+        self._pending_agent_turns.append((text, question_id))
         self._session.say(text, allow_interruptions=True)
-        self._last_agent_end_ms = now_ms
-        self._turn_start_ms = now_ms
 
     def _elapsed_ms(self) -> int:
         return _relative_ms(
             started_at_ms=self._started_at_ms,
             now_ms=int(time.time() * 1000),
         )
-
-    async def _publish_transcript(self, turn: TranscriptTurn) -> None:
-        """Send a transcript turn to the frontend via LiveKit data channel."""
-        if not self._session or not hasattr(self._session, "room"):
-            return
-        try:
-            room = self._session.room
-            if room and room.local_participant:
-                data = json.dumps({
-                    "type": "transcript",
-                    "speaker": turn.speaker,
-                    "text": turn.text,
-                    "question_id": turn.question_id,
-                }).encode()
-                await room.local_participant.publish_data(data, reliable=True)
-        except Exception:
-            logger.exception("publish_transcript_failed")
 
     async def _fire_live_score(
         self,
@@ -417,7 +457,7 @@ async def entrypoint(ctx: JobContext) -> None:
         min_endpointing_delay=0.5,
     )
 
-    agent = InterviewerAgent(package=package, state_machine=sm)
+    agent = InterviewerAgent(package=package, state_machine=sm, room=ctx.room)
 
     logger.info("starting_session", room=ctx.room.name)
     await session.start(agent=agent, room=ctx.room)
@@ -434,7 +474,6 @@ async def entrypoint(ctx: JobContext) -> None:
         )
     )
     logger.info("greeting_generated", room=ctx.room.name)
-    agent._last_agent_end_ms = agent._elapsed_ms()
 
     # LiveKit awaits shutdown callbacks before terminating the job process.
     # A detached task here can be cancelled before it persists the final state.
@@ -456,12 +495,13 @@ async def _run_postcall(
 ) -> None:
     """Post-call pipeline — runs on room disconnect."""
     try:
+        await agent.flush_transcript_tasks()
         if sm._current_turn is not None and sm._current_turn.answer_text:
             sm.advance()
+        completed = sm.is_complete()
         sm.close()
 
-        turns = sm.get_all_turns()
-        if not turns:
+        if not completed:
             await asyncio.to_thread(
                 _mark_interview_abandoned,
                 package.interview_id,
@@ -569,7 +609,7 @@ def _mark_interview_abandoned(
     org_id: str,
     transcript: list[TranscriptTurn],
 ) -> None:
-    """Finish an interview that ended before any scored answer was recorded."""
+    """Finish an interview that ended before the completion gate passed."""
     (
         db().table("interview")
         .update({
@@ -577,6 +617,21 @@ def _mark_interview_abandoned(
             "ended_at": datetime.now(UTC).isoformat(),
             "transcript": [turn.model_dump(mode="json") for turn in transcript],
         })
+        .eq("org_id", org_id)
+        .eq("id", interview_id)
+        .execute()
+    )
+
+
+def _persist_interview_transcript(
+    interview_id: str,
+    org_id: str,
+    transcript: list[TranscriptTurn],
+) -> None:
+    """Best-effort checkpoint; the next full snapshot retries any missed turn."""
+    (
+        db().table("interview")
+        .update({"transcript": [turn.model_dump(mode="json") for turn in transcript]})
         .eq("org_id", org_id)
         .eq("id", interview_id)
         .execute()

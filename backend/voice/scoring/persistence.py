@@ -53,6 +53,11 @@ def persist_result(
     client: Any | None = None,
 ) -> None:
     """Write the full score contract plus normalized question evidence."""
+    expected_ids = [question.question_id for question in package.questions]
+    answer_ids = [answer.question_id for answer in result.answers]
+    if answer_ids != expected_ids:
+        raise ValueError("Refusing to publish without the complete question set")
+
     client = client or db()
     existing = (
         client.table("question_instance")

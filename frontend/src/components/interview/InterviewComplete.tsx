@@ -1,5 +1,5 @@
 /**
- * Interview complete — shown when the interview ends.
+ * Interview ended — shown after either a complete or early-ended call.
  * Matches the neobrutalist theme.
  */
 
@@ -24,7 +24,7 @@ export function InterviewComplete() {
           ✓
         </div>
         <h1 style={{ fontSize: "1.2rem", marginBottom: "0.5rem" }}>
-          Interview complete
+          Interview ended
         </h1>
         <p style={{ color: "var(--color-muted)", fontSize: "0.9rem", marginBottom: "1rem" }}>
           Thank you for your time. Your recruiter will follow up with next steps.

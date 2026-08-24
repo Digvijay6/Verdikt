@@ -365,6 +365,12 @@ async def entrypoint(ctx: JobContext) -> None:
     await session.start(agent=agent, room=ctx.room)
     agent.set_session(session)
 
+    # Set the agent's display name to "Verdikt" so it shows in the UI
+    try:
+        await ctx.room.local_participant.set_name("Verdikt")
+    except Exception:
+        logger.warning("failed to set agent name to Verdikt")
+
     # Greet, introduce as Verdikt, ask for intro — the system prompt handles
     # the flow: greet → intro → small talk → transition to questions.
     # The state machine's first question is asked by the LLM naturally after
@@ -475,4 +481,4 @@ def _write_interview_result(
 
 
 if __name__ == "__main__":
-    cli.run_app(WorkerOptions(entrypoint_fnc=entrypoint))
+    cli.run_app(WorkerOptions(entrypoint_fnc=entrypoint, agent_name="verdikt"))

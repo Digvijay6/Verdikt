@@ -92,6 +92,13 @@ job created -> requirements extracted from the JD by Gemini
   model/prompt provenance in `recruiter_chat_session.messages` (D5, D9, D11).
   The candidate page renders assistant replies as sanitized GitHub-flavored
   Markdown; recruiter messages remain literal text.
+- The Insights reader normalizes score rows written before Lane 2 made
+  `DimensionScore.band`, `transcript_summary`, and `human_review_reasons`
+  required. This is read-only display compatibility: stored scores are never
+  recalculated or rewritten. Verified against Acme: the two scored jobs return
+  5 and 10 leaderboard entries respectively. Candidate detail also accepts the
+  legacy `review_reasons` response name as a fallback for the current
+  `human_review_reasons` contract.
 - `shared/interview_scoring.py` — deterministic seniority weights, ownership
   cap, consistency penalties, must-have cap, review triggers
 - `interview_score` table plus rubric v2 aggregates (0-100 composite)

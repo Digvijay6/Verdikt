@@ -8,6 +8,7 @@ no vector store, no chunking, and citations get more accurate rather than less.
 
 import json
 import logging
+from copy import deepcopy
 from datetime import UTC, datetime
 from typing import Annotated, Any
 
@@ -419,7 +420,7 @@ def _build_chat_dossier(
         "score_summary": score_payload,
         "review_signals": {
             "needs_human_review": result.needs_human_review,
-            "review_reasons": [str(reason) for reason in result.review_reasons],
+            "review_reasons": [str(reason) for reason in result.human_review_reasons],
             "hard_gate_applied": result.hard_gate_applied,
             "integrity": result.integrity.model_dump(mode="json"),
         },
@@ -464,7 +465,7 @@ def _needs_human_review(result: InterviewResult) -> bool:
 
 
 def _review_reasons(result: InterviewResult) -> list[str]:
-    reasons = [str(reason) for reason in result.review_reasons]
+    reasons = [str(reason) for reason in result.human_review_reasons]
     if result.integrity.score >= 60:
         reasons.append("integrity_flag")
     if result.hard_gate_applied:
@@ -514,13 +515,7 @@ def _interview_result_from_score_row(row: dict[str, Any]) -> InterviewResult:
             detail="Stored interview result has an invalid shape",
         )
 
-    payload = {
-        **payload,
-        "interview_id": payload.get("interview_id") or row.get("interview_id"),
-        "org_id": payload.get("org_id") or row.get("org_id"),
-        "application_id": payload.get("application_id") or row.get("application_id"),
-        "job_id": payload.get("job_id") or row.get("job_id"),
-    }
+    payload = _normalize_score_payload(payload, row)
     try:
         return InterviewResult.model_validate(payload)
     except ValueError as exc:
@@ -528,6 +523,93 @@ def _interview_result_from_score_row(row: dict[str, Any]) -> InterviewResult:
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Stored interview result does not match the scoring contract",
         ) from exc
+
+
+def _normalize_score_payload(
+    payload: dict[str, Any],
+    row: dict[str, Any],
+) -> dict[str, Any]:
+    """Read score rows produced before the current Lane 2 contract.
+
+    This is a display compatibility layer only. It does not recalculate or
+    persist scores; it fills metadata that became required after the rows were
+    written so an old interview remains reviewable.
+    """
+    normalized = deepcopy(payload)
+    normalized.update(
+        {
+            "interview_id": normalized.get("interview_id") or row.get("interview_id"),
+            "org_id": normalized.get("org_id") or row.get("org_id"),
+            "application_id": normalized.get("application_id")
+            or row.get("application_id"),
+            "job_id": normalized.get("job_id") or row.get("job_id"),
+        }
+    )
+
+    seniority = (
+        normalized.get("seniority")
+        or normalized.get("seniority_bucket")
+        or row.get("seniority_bucket")
+        or "unspecified"
+    )
+    normalized["seniority"] = seniority
+    if not normalized.get("seniority_bucket") and seniority in {"junior", "mid", "senior"}:
+        normalized["seniority_bucket"] = seniority
+
+    if normalized.get("consistency_score") is None:
+        stored_consistency = row.get("consistency_score")
+        normalized["consistency_score"] = (
+            stored_consistency if stored_consistency is not None else 100
+        )
+
+    if "human_review_reasons" not in normalized:
+        normalized["human_review_reasons"] = (
+            normalized.get("review_reasons")
+            or _json_value(row.get("review_reasons"), [])
+        )
+
+    if not normalized.get("transcript_summary"):
+        holistic = normalized.get("holistic") or {}
+        integrity = normalized.get("integrity") or {}
+        normalized["transcript_summary"] = (
+            holistic.get("representative_quote")
+            or integrity.get("summary")
+            or "Legacy scored interview; no transcript summary was stored."
+        )
+
+    for answer in normalized.get("answers") or []:
+        for dimension in answer.get("dimensions") or []:
+            if not dimension.get("band"):
+                dimension["band"] = _legacy_dimension_band(dimension.get("score"))
+
+    return normalized
+
+
+def _legacy_dimension_band(value: Any) -> str:
+    try:
+        score = float(value)
+    except (TypeError, ValueError):
+        return "unrated"
+
+    if score <= 5:
+        if score >= 4.5:
+            return "expert"
+        if score >= 3.5:
+            return "strong"
+        if score >= 2.5:
+            return "adequate"
+        if score >= 1.5:
+            return "weak"
+        return "poor"
+    if score >= 90:
+        return "expert"
+    if score >= 75:
+        return "strong"
+    if score >= 55:
+        return "adequate"
+    if score >= 35:
+        return "weak"
+    return "poor"
 
 
 def _result_payload_from_score_columns(row: dict[str, Any]) -> dict[str, Any]:
@@ -544,20 +626,21 @@ def _result_payload_from_score_columns(row: dict[str, Any]) -> dict[str, Any]:
         "job_id": row.get("job_id"),
         "answers": _json_value(row.get("answers"), []),
         "holistic": _json_value(row.get("holistic"), None),
-        "role_fit": row.get("role_fit"),
-        "seniority": row.get("seniority_bucket"),
+        "seniority": row.get("seniority_bucket") or "unspecified",
+        "seniority_bucket": row.get("seniority_bucket"),
         "technical_accuracy_score": row.get("technical_accuracy_score"),
         "project_depth_score": row.get("project_depth_score"),
         "followup_resilience_score": row.get("followup_resilience_score"),
         "consistency_score": row.get("consistency_score"),
         "composite_score": row.get("composite_score"),
         "needs_human_review": row.get("needs_human_review") or False,
-        "review_reasons": _json_value(row.get("review_reasons"), []),
+        "human_review_reasons": _json_value(row.get("review_reasons"), []),
         "overall": row.get("overall"),
         "percentile": row.get("percentile"),
         "recommendation": row.get("recommendation"),
         "hard_gate_applied": row.get("hard_gate_applied") or False,
         "integrity": _json_value(row.get("integrity"), None),
+        "transcript_summary": "Legacy score reconstructed from normalized columns.",
         "rubric_version": row.get("rubric_version"),
         "scored_at": row.get("scored_at"),
     }

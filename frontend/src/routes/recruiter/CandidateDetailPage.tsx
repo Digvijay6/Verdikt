@@ -76,7 +76,9 @@ export default function CandidateDetailPage() {
 
   const score = result.composite_score ?? Math.round(((result.overall - 1) / 4) * 100);
   const percentile = result.percentile ?? leaderboardEntry?.percentile;
-  const reviewReasons = [...result.review_reasons];
+  const reviewReasons = [
+    ...(result.human_review_reasons ?? result.review_reasons ?? []),
+  ];
   if (result.integrity.score >= 60) reviewReasons.push("integrity_flag");
   if (result.hard_gate_applied) reviewReasons.push("must_have_hard_gate");
   if (result.recommendation === "reject") reviewReasons.push("rejection_requires_human_review");

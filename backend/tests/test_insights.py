@@ -15,6 +15,8 @@ os.environ.setdefault("RESEND_API_KEY", "resend")
 
 from api.routers.insights import (
     _interview_result_from_score_row,
+    _legacy_dimension_band,
+    _normalize_score_payload,
     build_leaderboard_entries,
     score_to_100,
 )
@@ -38,6 +40,7 @@ def _result(
         org_id="org_1",
         application_id=application_id,
         job_id="job_1",
+        seniority="mid",
         answers=[],
         holistic=HolisticScore(
             score=overall,
@@ -47,7 +50,7 @@ def _result(
             model_id="gemini-test",
             prompt_version="score-holistic.v1",
         ),
-        role_fit=overall,
+        consistency_score=100,
         composite_score=composite_score,
         needs_human_review=needs_human_review,
         overall=overall,
@@ -58,6 +61,7 @@ def _result(
             events=[],
             summary="No notable integrity events.",
         ),
+        transcript_summary="The candidate discussed service boundaries.",
         rubric_version="rubric.v1",
         scored_at=datetime(2026, 8, 22, tzinfo=UTC),
     )
@@ -68,6 +72,29 @@ def test_score_to_100_maps_canonical_score_to_display_score() -> None:
     assert score_to_100(3.0) == 50
     assert score_to_100(5.0) == 100
     assert score_to_100(6.0) == 100
+
+
+def test_legacy_score_metadata_is_added_without_changing_scores() -> None:
+    payload = {
+        "seniority": "senior",
+        "consistency_score": 0,
+        "holistic": {"representative_quote": "I measured the baseline."},
+        "answers": [{"dimensions": [{"score": 5}, {"score": 2}]}],
+    }
+
+    normalized = _normalize_score_payload(payload, {})
+
+    assert normalized["consistency_score"] == 0
+    assert normalized["transcript_summary"] == "I measured the baseline."
+    assert normalized["answers"][0]["dimensions"][0] == {
+        "score": 5,
+        "band": "expert",
+    }
+    assert normalized["answers"][0]["dimensions"][1] == {
+        "score": 2,
+        "band": "weak",
+    }
+    assert _legacy_dimension_band(92) == "expert"
 
 
 def test_build_leaderboard_entries_sorts_and_flags_review_cases() -> None:
@@ -164,6 +191,8 @@ def test_interview_result_from_score_row_can_fallback_to_score_columns() -> None
             "recommendation": "advance",
             "hard_gate_applied": False,
             "role_fit": "4.0",
+            "seniority_bucket": "mid",
+            "consistency_score": 100,
             "answers": "[]",
             "holistic": {
                 "score": 4.0,

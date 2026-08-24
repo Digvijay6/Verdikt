@@ -40,17 +40,37 @@
   .leaderboard-summary {
     display: grid;
     grid-template-columns: repeat(4, minmax(0, 1fr));
-    border-block: 1px solid var(--color-line);
+    gap: 0.9rem;
   }
 
   .leaderboard-summary > div {
+    display: grid;
     min-width: 0;
-    padding: 1.05rem 1.2rem;
-    border-right: 1px solid var(--color-line);
+    min-height: 8.5rem;
+    place-content: center;
+    text-align: center;
+    padding: 1rem;
+    border: 1px solid var(--color-edge);
+    border-radius: var(--radius-tile);
+    background: var(--color-panel);
+    box-shadow: var(--shadow-tile);
   }
 
-  .leaderboard-summary > div:last-child {
-    border-right: 0;
+  .leaderboard-summary > div:nth-child(1) {
+    background: var(--color-lime);
+  }
+
+  .leaderboard-summary > div:nth-child(2) {
+    background: var(--color-lavender);
+  }
+
+  .leaderboard-summary > div:nth-child(3) {
+    background: var(--color-ink);
+    color: var(--color-panel);
+  }
+
+  .leaderboard-summary > div:nth-child(3) span {
+    color: rgb(255 255 255 / 0.72);
   }
 
   .leaderboard-summary span,
@@ -70,7 +90,7 @@
   }
 
   .leaderboard-summary .summary-review {
-    background: color-mix(in srgb, var(--color-danger) 14%, white);
+    background: color-mix(in srgb, var(--color-danger) 32%, white);
   }
 
   .leaderboard-analytics {
@@ -115,9 +135,19 @@
     min-width: 0;
     min-height: 16rem;
     padding: 1rem;
-    border: 1px solid var(--color-line);
-    border-radius: 0.5rem;
-    background: var(--color-panel);
+    border: 1px solid var(--color-edge);
+    border-radius: var(--radius-tile);
+    background: var(--color-lime);
+    box-shadow: var(--shadow-tile);
+  }
+
+  .analytics-panel:nth-child(2) {
+    background: var(--color-lavender);
+  }
+
+  .analytics-panel:nth-child(3) {
+    background: var(--color-ink);
+    color: var(--color-panel);
   }
 
   .analytics-panel-heading {
@@ -126,7 +156,7 @@
   }
 
   .analytics-panel-heading h3 {
-    font-size: 0.86rem;
+    font-size: 0.94rem;
   }
 
   .analytics-panel-heading p,
@@ -135,6 +165,13 @@
     color: var(--color-muted);
     font-size: 0.66rem;
     font-weight: 600;
+  }
+
+  .analytics-panel:nth-child(3) .analytics-panel-heading p,
+  .analytics-panel:nth-child(3) .analytics-mix-group > span,
+  .analytics-panel:nth-child(3) .analytics-review-counts,
+  .analytics-panel:nth-child(3) .analytics-legend li {
+    color: rgb(255 255 255 / 0.68);
   }
 
   .analytics-panel-heading > strong {
@@ -191,11 +228,11 @@
   }
 
   .analytics-column:nth-child(3) .analytics-column-fill {
-    background: color-mix(in srgb, var(--color-lime) 55%, white);
+    background: var(--color-panel);
   }
 
   .analytics-column:nth-child(4) .analytics-column-fill {
-    background: var(--color-lime);
+    background: var(--color-ink);
   }
 
   .analytics-metrics {
@@ -226,7 +263,7 @@
   .analytics-metric-track,
   .analytics-mix-track {
     overflow: hidden;
-    border: 1px solid var(--color-line);
+    border: 1px solid color-mix(in srgb, var(--color-edge) 35%, transparent);
     background: var(--color-paper);
   }
 
@@ -322,6 +359,11 @@
   .analytics-review-counts strong {
     color: var(--color-ink);
     font-variant-numeric: tabular-nums;
+  }
+
+  .analytics-panel:nth-child(3) .analytics-legend strong,
+  .analytics-panel:nth-child(3) .analytics-review-counts strong {
+    color: var(--color-panel);
   }
 
   .analytics-review-counts {
@@ -1020,9 +1062,6 @@
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .leaderboard-summary > div:nth-child(2) { border-right: 0; }
-  .leaderboard-summary > div:nth-child(-n + 2) { border-bottom: 1px solid var(--color-line); }
-
   .candidate-search { width: 100%; margin-left: 0; }
   .insight-segmented { width: 100%; }
   .insight-segmented button { flex: 1; }
@@ -1057,8 +1096,6 @@
 @media (max-width: 460px) {
   .leaderboard-summary,
   .candidate-score-band { grid-template-columns: 1fr; }
-  .leaderboard-summary > div { border-right: 0; border-bottom: 1px solid var(--color-line); }
-  .leaderboard-summary > div:last-child { border-bottom: 0; }
   .answer-card > summary { grid-template-columns: 2.5rem minmax(0, 1fr); }
   .answer-score { grid-column: 2; }
 }

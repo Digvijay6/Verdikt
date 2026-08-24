@@ -116,7 +116,7 @@ def redeem(body: RedeemRequest) -> RedeemResponse:
             detail="Invalid invite token",
         )
 
-    invite = invite_result.data
+    invite = invite_result.data[0]
 
     # 2. Reject if expired
     expires_at = datetime.fromisoformat(invite["expires_at"])

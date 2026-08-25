@@ -657,3 +657,99 @@
     transition-duration: 0.01ms !important;
   }
 }
+
+/* --- job pipeline hierarchy --------------------------------------------
+
+   Intake owns the job markup, so the presentation keys off the stable tile
+   order it exposes: Applications, Interviewing now, and Scored are the three
+   summary signals. The remaining states stay compact because they are useful
+   operational detail, not nine competing headlines. These rules are outside
+   Tailwind's layers so they can intentionally refine the utility-coloured
+   tiles without changing the shared Intake component. */
+.nb-tabpanel > :has(> .nb-tile) {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 0.8rem;
+}
+
+.nb-tabpanel > :has(> .nb-tile) > .nb-tile {
+  order: 4;
+  display: grid;
+  min-width: 0;
+  min-height: 5.25rem;
+  align-content: center;
+  gap: 0.12rem;
+  padding: 0.75rem 0.85rem;
+  border-color: var(--color-line);
+  border-radius: var(--radius-btn);
+  box-shadow: none;
+}
+
+.nb-tabpanel > :has(> .nb-tile) > .nb-tile > span {
+  line-height: 1.35;
+}
+
+.nb-tabpanel > :has(> .nb-tile) > .nb-tile:is(.bg-lime, .bg-lavender, .bg-danger) > span {
+  color: rgb(18 20 26 / 0.72);
+}
+
+.nb-tabpanel > :has(> .nb-tile) > .nb-tile:is(:nth-child(1), :nth-child(6), :nth-child(7)) {
+  grid-column: span 2;
+  min-height: 8.25rem;
+  justify-items: center;
+  gap: 0.25rem;
+  padding: 1rem;
+  text-align: center;
+  border-color: var(--color-edge);
+  border-radius: var(--radius-tile);
+  box-shadow: var(--shadow-tile);
+}
+
+.nb-tabpanel > :has(> .nb-tile) > .nb-tile:is(:nth-child(1), :nth-child(6), :nth-child(7)) > b {
+  font-size: 2rem;
+}
+
+/* Applications */
+.nb-tabpanel > :has(> .nb-tile) > .nb-tile:nth-child(1) {
+  order: 1;
+  background: var(--color-lime);
+}
+
+/* Interviewing now */
+.nb-tabpanel > :has(> .nb-tile) > .nb-tile:nth-child(6) {
+  order: 2;
+  background: var(--color-lavender);
+}
+
+/* Scored */
+.nb-tabpanel > :has(> .nb-tile) > .nb-tile:nth-child(7) {
+  order: 3;
+  color: var(--color-panel);
+  background: var(--color-ink);
+}
+
+.nb-tabpanel > :has(> .nb-tile) > .nb-tile:nth-child(7) > span {
+  color: rgb(255 255 255 / 0.72);
+}
+
+@media (max-width: 52rem) {
+  .nb-tabpanel > :has(> .nb-tile) {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .nb-tabpanel > :has(> .nb-tile) > .nb-tile:is(:nth-child(1), :nth-child(6), :nth-child(7)) {
+    grid-column: span 1;
+    min-height: 7.25rem;
+  }
+}
+
+@media (max-width: 34rem) {
+  .nb-tabpanel > :has(> .nb-tile) {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .nb-tabpanel > :has(> .nb-tile) > .nb-tile:is(:nth-child(1), :nth-child(6), :nth-child(7)) {
+    grid-column: 1 / -1;
+    min-height: 6.75rem;
+  }
+}

@@ -27,7 +27,8 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 _env_path = Path(__file__).resolve().parents[1] / ".env"
-load_dotenv(_env_path)
+if __name__ == "__main__":
+    load_dotenv(_env_path)
 
 # LiveKit dev mode enables root DEBUG logging. HTTP/2 protocol loggers include
 # raw authorization headers at that level, so keep them above DEBUG always.

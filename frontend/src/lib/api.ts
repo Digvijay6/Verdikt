@@ -27,9 +27,8 @@ async function request<T>(
   { authenticated = true }: { authenticated?: boolean } = {},
 ): Promise<T> {
   const headers = new Headers(init.headers);
-  // Never set Content-Type for FormData — the browser has to supply the
-  // multipart boundary itself, and overriding it silently breaks the upload.
-  if (!(init.body instanceof FormData)) {
+  // Let the browser set multipart boundaries and URL-encoded content types.
+  if (!(init.body instanceof FormData) && !(init.body instanceof URLSearchParams)) {
     headers.set("Content-Type", "application/json");
   }
 
@@ -65,6 +64,22 @@ export const api = {
     request<T>(
       "/interview/redeem",
       { method: "POST", body: JSON.stringify({ token }) },
+      { authenticated: false },
+    ),
+
+  /** Public — poll post-call processing with the same invite credential. */
+  interviewStatus: <T>(token: string) =>
+    request<T>(
+      "/interview/status",
+      { method: "POST", body: JSON.stringify({ token }) },
+      { authenticated: false },
+    ),
+
+  /** Public — terminate the token holder's LiveKit room. */
+  endInterview: (token: string) =>
+    request<{ status: "ending" }>(
+      "/interview/end",
+      { method: "POST", body: new URLSearchParams({ token }) },
       { authenticated: false },
     ),
 };

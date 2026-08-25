@@ -2,29 +2,30 @@
  * LANE 2 — candidate interview room.
  *
  * Public route: /interview/:token
- *
- * Flow:
- *   1. Consent gate (GDPR/BIPA/AEDTA)
- *   2. Redeem invite token → get LiveKit access token + room name
- *   3. Connect to LiveKit room
- *   4. Start proctoring client
- *   5. Show live transcript + provisional scores
- *   6. On interview complete → thank you screen
  */
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useParams } from "react-router-dom";
-import { useLiveKitRoom } from "@livekit/components-react";
-import { RoomEvent } from "livekit-client";
+import {
+  LiveKitRoom,
+  RoomAudioRenderer,
+  TrackToggle,
+  VideoTrack,
+  useDataChannel,
+  useLocalParticipant,
+  useRoomContext,
+  useTranscriptions,
+} from "@livekit/components-react";
+import { Track } from "livekit-client";
 
 import { api } from "../../lib/api";
 import { ProctorClient } from "../../lib/proctor";
 
 import { ConsentGate } from "../../components/interview/ConsentGate";
 import { LiveTranscript } from "../../components/interview/LiveTranscript";
-import { LiveSignalCard } from "../../components/interview/LiveSignalCard";
-import { QuestionProgress } from "../../components/interview/QuestionProgress";
 import { InterviewComplete } from "../../components/interview/InterviewComplete";
+import { toTranscriptEntries } from "../../components/interview/transcript";
+import { canEndCall } from "./endCall";
 
 interface RedeemResponse {
   interview_id: string;
@@ -37,17 +38,11 @@ interface RedeemResponse {
 
 export default function InterviewRoom() {
   const { token } = useParams();
-  const [phase, setPhase] = useState<"consent" | "connecting" | "live" | "done">(
-    "consent",
-  );
+  const [phase, setPhase] = useState<"consent" | "connecting" | "live" | "done">("consent");
   const [error, setError] = useState<string | null>(null);
   const [connection, setConnection] = useState<RedeemResponse | null>(null);
-  const [transcript, setTranscript] = useState<TranscriptEntry[]>([]);
-  const [signals, setSignals] = useState<Record<string, number>>({});
-  const [questionCount, setQuestionCount] = useState(0);
   const proctorRef = useRef<ProctorClient | null>(null);
 
-  // 1. Redeem the token after consent
   const handleConsent = async () => {
     if (!token) return;
     setPhase("connecting");
@@ -61,152 +56,244 @@ export default function InterviewRoom() {
     }
   };
 
-  // 2. Start proctoring + connect to LiveKit when we have the connection info
   useEffect(() => {
     if (!connection || phase !== "live") return;
-
     const apiUrl = import.meta.env.VITE_API_URL ?? "http://localhost:8000";
     const proctor = new ProctorClient(
-      (connection as RedeemResponse & { org_id?: string }).org_id ?? "",
+      connection.org_id ?? "",
       connection.interview_id,
       apiUrl,
     );
     proctor.start();
     proctorRef.current = proctor;
-
     return () => {
       proctor.destroy();
       proctorRef.current = null;
     };
   }, [connection, phase]);
 
+  useEffect(() => {
+    if (!token || phase !== "live") return;
+    const apiUrl = import.meta.env.VITE_API_URL ?? "http://localhost:8000";
+    const handlePageHide = () => {
+      navigator.sendBeacon(`${apiUrl}/interview/end`, new URLSearchParams({ token }));
+    };
+    window.addEventListener("pagehide", handlePageHide);
+    return () => window.removeEventListener("pagehide", handlePageHide);
+  }, [phase, token]);
+
+  const handleInterviewEnd = useCallback(() => {
+    setPhase("done");
+  }, []);
+
   if (phase === "consent") {
     return <ConsentGate onAccept={handleConsent} error={error} />;
   }
 
   if (phase === "connecting") {
-    return <div className="flex items-center justify-center h-screen">Connecting...</div>;
+    return (
+      <main className="wrap narrow">
+        <div className="nb-card" style={{ textAlign: "center" }}>
+          <p className="hint">Connecting...</p>
+        </div>
+      </main>
+    );
   }
 
   if (phase === "done" || !connection) {
-    return <InterviewComplete />;
+    return <InterviewComplete token={token} />;
   }
 
   return (
-    <LiveKitRoomWrapper
-      connection={connection}
-      onTranscriptUpdate={setTranscript}
-      onSignalUpdate={setSignals}
-      onQuestionCount={setQuestionCount}
-      onInterviewEnd={() => {
-        setPhase("done");
+    <LiveKitRoom
+      token={connection.access_token}
+      serverUrl={connection.livekit_url}
+      audio={true}
+      video={true}
+      connect={true}
+      onDisconnected={() => {
         proctorRef.current?.destroy();
+        setPhase("done");
       }}
-      transcript={transcript}
-      signals={signals}
-      questionCount={questionCount}
-    />
+      onError={(e) => {
+        console.error("LiveKit error:", e);
+        setError(e.message);
+      }}
+    >
+      <InterviewSession
+        token={token}
+        onInterviewEnd={handleInterviewEnd}
+      />
+    </LiveKitRoom>
   );
 }
 
-interface TranscriptEntry {
-  speaker: "agent" | "candidate";
-  text: string;
-  questionId?: string;
-}
-
-function LiveKitRoomWrapper({
-  connection,
-  onTranscriptUpdate,
-  onSignalUpdate,
-  onQuestionCount,
+function InterviewSession({
+  token,
   onInterviewEnd,
-  transcript,
-  signals,
-  questionCount,
 }: {
-  connection: RedeemResponse;
-  onTranscriptUpdate: (entries: TranscriptEntry[]) => void;
-  onSignalUpdate: (signals: Record<string, number>) => void;
-  onQuestionCount: (n: number) => void;
+  token?: string;
   onInterviewEnd: () => void;
-  transcript: TranscriptEntry[];
-  signals: Record<string, number>;
-  questionCount: number;
 }) {
-  const roomProps = {
-    serverUrl: connection.livekit_url,
-    token: connection.access_token,
-  };
+  const {
+    cameraTrack,
+    isCameraEnabled,
+    isMicrophoneEnabled,
+    lastCameraError,
+    localParticipant,
+  } = useLocalParticipant();
+  const room = useRoomContext();
+  const transcriptions = useTranscriptions({ room });
+  const transcript = toTranscriptEntries(
+    transcriptions,
+    room.localParticipant.identity,
+  );
+  const [questionsComplete, setQuestionsComplete] = useState(false);
 
-  const room = useLiveKitRoom(roomProps);
-
-  // Subscribe to data messages (transcript + live signals from the agent)
-  useEffect(() => {
-    if (!room) return;
-
-    const handleData = (payload: Uint8Array) => {
+  const handleData = useCallback(
+    (message: { payload: Uint8Array }) => {
       try {
-        const msg = JSON.parse(new TextDecoder().decode(payload));
-        if (msg.type === "transcript") {
-          onTranscriptUpdate([...transcript, {
-            speaker: msg.speaker,
-            text: msg.text,
-            questionId: msg.question_id,
-          }]);
-        } else if (msg.type === "live_signal") {
-          onSignalUpdate({ ...signals, [msg.question_id]: msg.correctness });
-        } else if (msg.type === "question_count") {
-          onQuestionCount(msg.count);
-        } else if (msg.type === "interview_end") {
+        const payload = JSON.parse(new TextDecoder().decode(message.payload));
+        if (payload.type === "questions_complete") {
+          setQuestionsComplete(true);
+        } else if (payload.type === "interview_end") {
           onInterviewEnd();
         }
       } catch {
-        // Ignore malformed messages
+        // Ignore malformed data-channel messages.
       }
-    };
+    },
+    [onInterviewEnd],
+  );
 
-    room.on(RoomEvent.DataReceived, handleData);
+  useDataChannel(handleData);
 
-    return () => {
-      room.off(RoomEvent.DataReceived, handleData);
-    };
-  }, [room, transcript, signals, onTranscriptUpdate, onSignalUpdate, onQuestionCount, onInterviewEnd]);
+  const handleEndCall = async () => {
+    if (!canEndCall(questionsComplete, window.confirm)) return;
+    try {
+      if (token) await api.endInterview(token);
+    } finally {
+      await room.disconnect();
+    }
+  };
 
   return (
-    <div className="flex flex-col h-screen bg-gray-50">
-      {/* Header */}
-      <div className="flex items-center justify-between px-6 py-3 bg-white border-b">
-        <div className="flex items-center gap-3">
-          <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
-          <span className="text-sm text-gray-600">Interview in progress</span>
+    <>
+      <RoomAudioRenderer />
+      <main className="wrap" style={{ maxWidth: "44rem" }}>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "0.6rem",
+            marginBottom: "1.5rem",
+          }}
+        >
+          <div
+            style={{
+              width: "0.5rem",
+              height: "0.5rem",
+              borderRadius: "9999px",
+              background: "var(--color-danger)",
+              animation: "pulse 2s infinite",
+            }}
+          />
+          <span style={{ fontSize: "0.85rem", color: "var(--color-muted)" }}>
+            Interview in progress
+          </span>
         </div>
-        <QuestionProgress current={questionCount} total={0} />
-      </div>
 
-      {/* Main content */}
-      <div className="flex-1 flex overflow-hidden">
-        {/* Transcript panel */}
-        <div className="flex-1 overflow-y-auto p-6">
-          <LiveTranscript transcript={transcript} />
-        </div>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: "1rem", alignItems: "stretch" }}>
+          <section
+            className="nb-card"
+            aria-label="Your camera preview"
+            style={{ flex: "1 1 14rem", minWidth: 0, padding: "0.75rem" }}
+          >
+            <div
+              style={{
+                aspectRatio: "4 / 3",
+                overflow: "hidden",
+                borderRadius: "var(--radius-tile)",
+                background: "var(--color-ink)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              {isCameraEnabled && cameraTrack ? (
+                <VideoTrack
+                  trackRef={{
+                    participant: localParticipant,
+                    publication: cameraTrack,
+                    source: Track.Source.Camera,
+                  }}
+                  style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                />
+              ) : (
+                <p style={{ color: "var(--color-panel)", fontSize: "0.85rem", margin: 0 }}>
+                  {lastCameraError ? "Camera unavailable" : "Camera is off"}
+                </p>
+              )}
+            </div>
+            <p className="hint" style={{ margin: "0.75rem 0 0" }}>
+              Your camera preview
+            </p>
+          </section>
 
-        {/* Live scores sidebar */}
-        <div className="w-80 border-l bg-white p-4 overflow-y-auto">
-          <h3 className="text-sm font-medium text-gray-700 mb-3">
-            Provisional Scores
-          </h3>
-          <div className="space-y-2">
-            {Object.entries(signals).map(([qid, score]) => (
-              <LiveSignalCard key={qid} questionId={qid} score={score} />
-            ))}
+          <div
+            className="nb-card"
+            style={{
+              flex: "2 1 24rem",
+              minWidth: 0,
+              minHeight: "50vh",
+              maxHeight: "70vh",
+              overflowY: "auto",
+            }}
+          >
+            <LiveTranscript transcript={transcript} />
           </div>
-          <p className="text-xs text-gray-400 mt-4">
-            Scores are provisional and marked "live estimate". Final scores are
-            computed after the interview.
-          </p>
         </div>
-      </div>
-    </div>
+
+        <div
+          aria-label="Call controls"
+          style={{
+            display: "flex",
+            flexWrap: "wrap",
+            justifyContent: "center",
+            gap: "0.75rem",
+            marginTop: "1.25rem",
+          }}
+        >
+          <TrackToggle
+            className="nb-btn"
+            source={Track.Source.Microphone}
+            showIcon={false}
+          >
+            {isMicrophoneEnabled ? "Mute microphone" : "Unmute microphone"}
+          </TrackToggle>
+          <TrackToggle className="nb-btn" source={Track.Source.Camera} showIcon={false}>
+            {isCameraEnabled ? "Turn camera off" : "Turn camera on"}
+          </TrackToggle>
+          <button
+            type="button"
+            className="nb-btn nb-btn-danger"
+            onClick={handleEndCall}
+          >
+            End call
+          </button>
+        </div>
+
+        <p
+          style={{
+            marginTop: "1rem",
+            fontSize: "0.8rem",
+            color: "var(--color-muted)",
+            textAlign: "center",
+          }}
+        >
+          Speak naturally — you can interrupt Verdikt at any time.
+        </p>
+      </main>
+    </>
   );
 }

@@ -6,7 +6,7 @@ work. Everything else in `docs/` is stable by design.
 If you are an agent reading this cold: check `docs/decisions.md` before
 proposing anything. It records what was rejected and why.
 
-Last updated: 2026-08-24
+Last updated: 2026-08-25
 
 ---
 
@@ -131,26 +131,110 @@ job created -> requirements extracted from the JD by Gemini
 Voice state machine, scoring pipeline, proctor, agent worker, redeem endpoint,
 room metadata, silero VAD. Eight commits unmerged. They have added
 `livekit-plugins-silero` and `structlog` to the `[voice]` extra.
-Its interview-completed hook still needs to invoke the shared one-prompt scorer;
-the job-id command is the executable integration path meanwhile.
+The interview-completed hook now invokes the shared one-prompt scorer and
+persists the normalized Lane 2 → Lane 3 handoff.
 
-**One change waiting for them.** Their redeem assembles the `InterviewPackage`
-itself — fetching the application, validating `job.question_bank` into
-`Question` objects, formatting a resume summary. All lane 1 models. Replace that
-block (`api/routers/interview.py` on `ai-call`, ~lines 175-222) with
-`build_interview_package(application_id, org_id, interview_id)`, about -32 lines
-and +1. Until they do, jobs built after D40 hand them a null `question_bank` and
-redeem fails loudly, which is the intended failure: better than silently parsing
-a rubric into nonsense.
+The worker now uses the custom ElevenLabs REST adapter with `eleven_flash_v2_5`
+and raw 24 kHz mono PCM. The adapter initializes LiveKit's `AudioEmitter` as a
+single non-streaming segment before pushing PCM, and a contract test covers the
+emitter path. `livekit-plugins-deepgram` is explicitly declared in the `[voice]`
+extra because the worker imports it at runtime.
 
-Two things that change on its own merits, not just for D40:
+The candidate room now requests camera and microphone through LiveKit, shows a
+local camera preview, and provides mute, camera, and End call controls. Ending
+the call or closing the tab disconnects the room; the worker awaits its
+shutdown callback and marks an interview that fails the completion gate
+`abandoned` instead of leaving it `in_progress`. Completion requires a non-empty
+primary response for every configured question plus entry into the candidate
+question period. Fullscreen and screen-share requests were removed from browser
+proctoring. The interviewer closing prompt now offers a candidate question
+period after the final configured question, then asks the candidate to click
+End call.
 
-- Their inline summary opens with `resume_highlights.full_name`, which **D14
-  forbids** — the interviewer agent is meant to be blind to name and
-  demographics. `packaging.resume_summary()` omits it.
-- Their redeem reads `application` joined to `job` with no `org_id` filter,
-  relying on the invite lookup for scoping. `build_interview_package()` takes
-  `org_id` and filters on it, per the repo rule.
+The same room now renders LiveKit's native transcription stream in an
+accessible, auto-scrolling **Live transcript** panel. Agent and candidate turns
+are labelled `Verdikt` and `You`; interim text updates in place, and blank
+partials are omitted. This avoids a second custom data-channel transcript path
+and keeps the on-screen text aligned with the audio pipeline.
+
+The worker records LiveKit's delivered assistant messages, including generated
+greetings and interrupted speech, rather than the intended full script. It
+checkpoints the accumulated transcript to `interview.transcript` after every
+agent and candidate turn; a failed checkpoint is non-fatal because the next
+full snapshot and shutdown persistence retry it. Incomplete calls retain this
+transcript and any live signals but cannot run post-call scoring or publish an
+`interview_score`. The persistence boundary independently rejects a result that
+does not contain the complete configured question set.
+
+Question delivery is gated on LiveKit's completed speech handle: an interrupted
+or unfinished prompt is repeated and overlapping speech is not scored as its
+answer. Scripted turns prefer LiveKit message IDs for transcript attribution,
+with text matching only as a compatibility fallback. STT waits 1.5 seconds
+before endpointing to reduce split answers.
+
+Clarifications, explicit off-topic requests, prompt-injection attempts, and
+short "I don't know" responses are deterministic branches. They do not advance
+or become scored answers; injection attempts are checkpointed immediately as
+integrity events. Follow-ups use one safe configured prompt and never read
+internal guidance aloud. Live scoring may drive that follow-up but has a
+two-second timeout so a provider delay cannot stall the call.
+
+The completion screen polls the token-authenticated interview status and
+distinguishes processing, completed, abandoned, and scoring-review states. End
+call requests server-side room deletion before browser disconnect; tab close
+sends the same request with `sendBeacon`. Terminal invites return 410 rather
+than silently starting a second interview.
+
+Current verification constraints and issues:
+
+- A full Chrome media run on 2026-08-24 contained **10 questions**, not one.
+  The worker received and asked `q1` through `q10` in package order, offered the
+  candidate question period, delivered the closing, and ended through the UI.
+- The Python state machine now owns question order. The introduction is not
+  scored; each primary and follow-up answer is tagged to its question before
+  the next prompt is spoken, and the final answer is committed before the
+  candidate question period.
+- Post-call scoring sends every recorded question through the canonical single
+  `score-interview` call, applies the deterministic v2 aggregate, then writes
+  `question_instance`, `question_scoring_claim`,
+  `question_conversation_turn`, `question_rubric_assessment`, and finally
+  `interview_score`. The recruiter-facing row is published last so Lane 3 does
+  not observe a partially persisted result.
+- Chrome verification used real LiveKit microphone and camera tracks with a
+  deterministic audio capture. The final interview reached `completed` with 10
+  question instances, 20 conversation turns, 34 scoring claims, 10 rubric
+  assessments, and one published `interview_score` row.
+- Post-call transcript timestamps are interview-relative milliseconds; Unix
+  epoch milliseconds overflowed the database integer contract. The worker now
+  allows 180 seconds for the shutdown callback so scoring and persistence are
+  not killed by LiveKit's 10-second default.
+- The frontend completed with no console errors. Its auth bootstrap emitted one
+  non-blocking `Session lookup did not settle in time; continuing` warning.
+- The live transcript was browser-verified at desktop and 320 px widths: the
+  complete Verdikt greeting appeared incrementally, controls remained usable,
+  and End call reached the ended screen with no console errors.
+- End call now uses one native confirmation while questions remain; dismissing
+  it keeps the call active, accepting it disconnects immediately. Tab close is
+  never blocked. A real early-exit run persisted the generated greeting,
+  finished as `abandoned`, and produced neither a result nor an
+  `interview_score` row.
+- A 2026-08-25 Chrome early-exit run confirmed camera/microphone controls, live
+  candidate transcript rendering, confirmation dismissal, immediate room deletion
+  (`ROOM_DELETED`), one persisted transcript turn, final `abandoned` status,
+  interviewer provenance (`gemini-2.5-flash`, prompt v2), zero score rows, and
+  zero matching LiveKit rooms.
+- The ElevenLabs credential was rotated on 2026-08-25. Authentication and a
+  real `eleven_flash_v2_5` PCM synthesis request both returned HTTP 200. The
+  previous credential appeared in worker output before traceback redaction and
+  must remain revoked; a fresh full spoken interview is still required after
+  restarting the worker with the replacement key.
+- HTTP/2 client loggers are clamped above DEBUG because protocol debug output
+  can include authorization headers.
+
+Redeem now delegates package construction to Lane 1's
+`build_interview_package(application_id, org_id, interview_id)`. This preserves
+D14's blind interviewer context and D27's tenant-scoped reads while supporting
+D40's per-candidate question set.
 
 ## Three coordination failures worth learning from
 
@@ -192,7 +276,7 @@ renumber yours — the merged one stays put.*
 | Concurrency and monthly limits recorded but unenforced | 1 / 2 |
 | Browser proctor detectors — `frontend/src/lib/proctor/` empty | 2 |
 | Outreach drafting and sending | 3 |
-| Remaining prompt stubs: `interviewer-system`, `score-answer-live`, `score-holistic` | mixed |
+| Remaining prompt stubs: `score-answer-live`, `score-holistic` | mixed |
 | **Nothing is deployed** — Google for Jobs needs a public URL, Resend needs a verified domain | shared |
 
 ## Before writing a query

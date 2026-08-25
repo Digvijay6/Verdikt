@@ -1,47 +1,94 @@
 /**
  * Live transcript — shows agent and candidate turns as they happen.
+ * Matches the neobrutalist theme.
  */
 
-interface TranscriptEntry {
-  speaker: "agent" | "candidate";
-  text: string;
-  questionId?: string;
-}
+import { useEffect, useRef } from "react";
+
+import type { TranscriptEntry } from "./transcript";
 
 interface LiveTranscriptProps {
   transcript: TranscriptEntry[];
 }
 
 export function LiveTranscript({ transcript }: LiveTranscriptProps) {
+  const endRef = useRef<HTMLDivElement>(null);
+  const latestEntry = transcript.at(-1);
+
+  useEffect(() => {
+    endRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }, [latestEntry?.id, latestEntry?.text]);
+
   if (transcript.length === 0) {
     return (
-      <div className="flex items-center justify-center h-full text-gray-400 text-sm">
-        The interview will begin shortly...
-      </div>
+      <section aria-labelledby="live-transcript-heading">
+        <h2 id="live-transcript-heading" style={{ fontSize: "1rem", marginTop: 0 }}>
+          Live transcript
+        </h2>
+        <div
+          role="status"
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            minHeight: "44vh",
+            color: "var(--color-muted)",
+            fontSize: "0.85rem",
+          }}
+        >
+          Listening for the conversation...
+        </div>
+      </section>
     );
   }
 
   return (
-    <div className="space-y-4">
-      {transcript.map((entry, i) => (
-        <div
-          key={i}
-          className={`flex ${entry.speaker === "agent" ? "justify-start" : "justify-end"}`}
-        >
+    <section aria-labelledby="live-transcript-heading">
+      <h2 id="live-transcript-heading" style={{ fontSize: "1rem", marginTop: 0 }}>
+        Live transcript
+      </h2>
+      <div
+        role="log"
+        aria-live="polite"
+        aria-relevant="additions text"
+        style={{ display: "flex", flexDirection: "column", gap: "1rem" }}
+      >
+        {transcript.map((entry) => (
           <div
-            className={`max-w-[80%] rounded-2xl px-4 py-3 ${
-              entry.speaker === "agent"
-                ? "bg-gray-100 text-gray-900"
-                : "bg-blue-50 text-gray-900"
-            }`}
+            key={entry.id}
+            style={{
+              display: "flex",
+              justifyContent:
+                entry.speaker === "agent" ? "flex-start" : "flex-end",
+            }}
           >
-            <div className="text-xs text-gray-400 mb-1">
-              {entry.speaker === "agent" ? "Interviewer" : "You"}
+            <div
+              className="nb-row"
+              style={{
+                maxWidth: "80%",
+                background:
+                  entry.speaker === "agent"
+                    ? "var(--color-panel)"
+                    : "color-mix(in srgb, var(--color-lime) 12%, var(--color-panel))",
+              }}
+            >
+              <div
+                style={{
+                  fontSize: "0.75rem",
+                  color: "var(--color-muted)",
+                  marginBottom: "0.25rem",
+                }}
+              >
+                {entry.speaker === "agent" ? "Verdikt" : "You"}
+              </div>
+              <p style={{ fontSize: "0.9rem", lineHeight: 1.5, margin: 0 }}>
+                {entry.text}
+              </p>
             </div>
-            <p className="text-sm leading-relaxed">{entry.text}</p>
           </div>
-        </div>
-      ))}
-    </div>
+        ))}
+        <div ref={endRef} aria-hidden="true" />
+      </div>
+    </section>
   );
 }

@@ -172,12 +172,3 @@ function Loading() {
     </main>
   );
 }
-
-function Placeholder({ name }: { name: string }) {
-  return (
-    <main className="wrap">
-      <h1>{name}</h1>
-      <p className="hint">Not built yet.</p>
-    </main>
-  );
-}

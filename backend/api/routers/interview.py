@@ -21,13 +21,15 @@ import hashlib
 import json
 import uuid
 from datetime import UTC, datetime
+from typing import Annotated
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, Form, HTTPException, status
 from pydantic import BaseModel
 
 from shared.config import get_settings
 from shared.db import db
-from shared.models.interview import IntegrityEvent
+from shared.llm import task_config
+from shared.models.interview import IntegrityEvent, InterviewStatus
 
 router = APIRouter(prefix="/interview", tags=["interview"])
 
@@ -53,7 +55,7 @@ def _livekit_token(room_name: str, identity: str, ttl_minutes: int = 15) -> str:
     return token.to_jwt()
 
 
-def _create_livekit_room(room_name: str, metadata: str) -> None:
+async def _create_livekit_room(room_name: str, metadata: str) -> None:
     """Create a LiveKit room with the InterviewPackage as metadata."""
     from livekit import api
 
@@ -63,17 +65,28 @@ def _create_livekit_room(room_name: str, metadata: str) -> None:
         api_secret=get_settings().livekit_api_secret,
     )
 
-    import asyncio
+    await lk_api.room.create_room(
+        api.CreateRoomRequest(
+            name=room_name,
+            metadata=metadata,
+        ),
+    )
+    await lk_api.aclose()
 
-    async def _create():
-        await lk_api.room.create_room(
-            api.CreateRoomRequest(
-                name=room_name,
-                metadata=metadata,
-            ),
-        )
 
-    asyncio.run(_create())
+async def _delete_livekit_room(room_name: str) -> None:
+    """Delete the media room so its worker shutdown callback runs immediately."""
+    from livekit import api
+
+    lk_api = api.LiveKitAPI(
+        url=get_settings().livekit_url,
+        api_key=get_settings().livekit_api_key,
+        api_secret=get_settings().livekit_api_secret,
+    )
+    try:
+        await lk_api.room.delete_room(api.DeleteRoomRequest(room=room_name))
+    finally:
+        await lk_api.aclose()
 
 
 # --- Request / response models -------------------------------------------
@@ -92,11 +105,15 @@ class RedeemResponse(BaseModel):
     resuming: bool = False
 
 
+class InterviewStatusResponse(BaseModel):
+    status: InterviewStatus
+
+
 # --- Endpoints ------------------------------------------------------------
 
 
 @router.post("/redeem", response_model=RedeemResponse)
-def redeem(body: RedeemRequest) -> RedeemResponse:
+async def redeem(body: RedeemRequest) -> RedeemResponse:
     """Public — the candidate has no account. The token is the auth.
 
     Order of operations (see module docstring). Never return or log the
@@ -116,7 +133,7 @@ def redeem(body: RedeemRequest) -> RedeemResponse:
             detail="Invalid invite token",
         )
 
-    invite = invite_result.data
+    invite = invite_result.data[0]
 
     # 2. Reject if expired
     expires_at = datetime.fromisoformat(invite["expires_at"])
@@ -129,9 +146,14 @@ def redeem(body: RedeemRequest) -> RedeemResponse:
     # 3. If already redeemed — check for rejoin
     interview_id = invite.get("interview_id")
     if interview_id:
-        interview_result = supabase.table("interview").select(
-            "*"
-        ).eq("id", interview_id).single().execute()
+        interview_result = (
+            supabase.table("interview")
+            .select("*")
+            .eq("org_id", invite["org_id"])
+            .eq("id", interview_id)
+            .single()
+            .execute()
+        )
         if interview_result.data:
             interview = interview_result.data
             if interview["status"] == "completed":
@@ -162,11 +184,15 @@ def redeem(body: RedeemRequest) -> RedeemResponse:
                     supabase.table("interview").update({
                         "status": "abandoned",
                         "ended_at": datetime.now(UTC).isoformat(),
-                    }).eq("id", interview_id).execute()
+                    }).eq("org_id", invite["org_id"]).eq("id", interview_id).execute()
                     raise HTTPException(
                         status_code=status.HTTP_410_GONE,
                         detail="Rejoin window expired",
                     )
+            raise HTTPException(
+                status_code=status.HTTP_410_GONE,
+                detail="Interview already ended",
+            )
 
     # 4. Create the Interview row and LiveKit room
     interview_id = str(uuid.uuid4())
@@ -190,13 +216,14 @@ def redeem(body: RedeemRequest) -> RedeemResponse:
         ) from e
 
     # Create the LiveKit room with the package as metadata
-    _create_livekit_room(
+    await _create_livekit_room(
         room_name=room_name,
         metadata=package.model_dump_json(),
     )
 
     # Create the Interview row
     now_iso = datetime.now(UTC).isoformat()
+    interviewer_config = task_config("interviewer-system")
     supabase.table("interview").insert({
         "id": interview_id,
         "org_id": org_id,
@@ -206,6 +233,8 @@ def redeem(body: RedeemRequest) -> RedeemResponse:
         "room_name": room_name,
         "seniority": package.seniority,
         "started_at": now_iso,
+        "model_id": interviewer_config.model,
+        "prompt_version": interviewer_config.version,
     }).execute()
 
     # Mark the invite as redeemed
@@ -230,6 +259,83 @@ def redeem(body: RedeemRequest) -> RedeemResponse:
     )
 
 
+@router.post("/status", response_model=InterviewStatusResponse)
+def interview_status(body: RedeemRequest) -> InterviewStatusResponse:
+    """Return processing state to the candidate authenticated by their invite token."""
+    supabase = db()
+    token_hash = hashlib.sha256(body.token.encode()).hexdigest()
+    invite_result = (
+        supabase.table("interview_invite")
+        .select("org_id,interview_id")
+        .eq("token_hash", token_hash)
+        .limit(1)
+        .execute()
+    )
+    if not invite_result.data or not invite_result.data[0].get("interview_id"):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Interview not found",
+        )
+
+    invite = invite_result.data[0]
+    interview_result = (
+        supabase.table("interview")
+        .select("status")
+        .eq("org_id", invite["org_id"])
+        .eq("id", invite["interview_id"])
+        .limit(1)
+        .execute()
+    )
+    if not interview_result.data:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Interview not found",
+        )
+    return InterviewStatusResponse(status=interview_result.data[0]["status"])
+
+
+@router.post("/end", status_code=status.HTTP_202_ACCEPTED)
+async def end_interview(token: Annotated[str, Form()]) -> dict[str, str]:
+    """End the token holder's media room; the worker persists the final state."""
+    supabase = db()
+    token_hash = hashlib.sha256(token.encode()).hexdigest()
+    invite_result = (
+        supabase.table("interview_invite")
+        .select("org_id,interview_id")
+        .eq("token_hash", token_hash)
+        .limit(1)
+        .execute()
+    )
+    if not invite_result.data or not invite_result.data[0].get("interview_id"):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Interview not found",
+        )
+
+    invite = invite_result.data[0]
+    interview_result = (
+        supabase.table("interview")
+        .select("room_name,status")
+        .eq("org_id", invite["org_id"])
+        .eq("id", invite["interview_id"])
+        .limit(1)
+        .execute()
+    )
+    if not interview_result.data:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Interview not found",
+        )
+
+    interview = interview_result.data[0]
+    if interview["status"] == InterviewStatus.IN_PROGRESS and interview.get("room_name"):
+        supabase.table("interview").update({
+            "ended_at": datetime.now(UTC).isoformat(),
+        }).eq("org_id", invite["org_id"]).eq("id", invite["interview_id"]).execute()
+        await _delete_livekit_room(interview["room_name"])
+    return {"status": "ending"}
+
+
 @router.post("/events", status_code=status.HTTP_202_ACCEPTED)
 def proctor_events(events: list[IntegrityEvent]) -> dict[str, str]:
     """Browser telemetry from frontend/src/lib/proctor.
@@ -240,14 +346,17 @@ def proctor_events(events: list[IntegrityEvent]) -> dict[str, str]:
     supabase = db()
 
     for event in events:
-        supabase.table("integrity_event").insert({
-            "id": str(uuid.uuid4()),
-            "org_id": event.org_id,
-            "interview_id": event.interview_id,
-            "type": event.type.value,
-            "severity": event.severity,
-            "at_ms": event.at_ms,
-            "detail": json.dumps(event.detail),
-        }).execute()
+        try:
+            supabase.table("integrity_event").insert({
+                "id": str(uuid.uuid4()),
+                "org_id": event.org_id,
+                "interview_id": event.interview_id,
+                "type": event.type.value,
+                "severity": event.severity,
+                "at_ms": int(event.at_ms) if event.at_ms < 2147483647 else int(event.at_ms / 1000),
+                "detail": json.dumps(event.detail),
+            }).execute()
+        except Exception:
+            pass
 
     return {"status": "accepted"}

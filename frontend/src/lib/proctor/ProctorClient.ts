@@ -20,10 +20,8 @@ export interface ProctorEvent {
 
 type ProctorEventType =
   | "tab_blur"
-  | "fullscreen_exit"
   | "paste_burst"
   | "virtual_camera"
-  | "multiple_displays"
   | "vm_detected"
   | "raf_jitter"
   | "device_change";
@@ -40,7 +38,7 @@ export class ProctorClient {
   private rafId: number | null = null;
   private lastRafTime = 0;
   private cameraLabels: string[] = [];
-  private monitors = 1;
+  private listeners = new AbortController();
   private destroyed = false;
 
   constructor(orgId: string, interviewId: string, apiUrl: string) {
@@ -50,9 +48,6 @@ export class ProctorClient {
   }
 
   async start(): Promise<void> {
-    // Fullscreen enforcement + exit detection
-    this.setupFullscreen();
-
     // Visibility / blur detection
     this.setupVisibility();
 
@@ -61,9 +56,6 @@ export class ProctorClient {
 
     // Device enumeration (virtual cameras)
     await this.enumerateDevices();
-
-    // Display enumeration (multiple monitors)
-    await this.checkDisplays();
 
     // WebGL fingerprint (VM detection)
     this.checkWebGL();
@@ -77,6 +69,7 @@ export class ProctorClient {
 
   destroy(): void {
     this.destroyed = true;
+    this.listeners.abort();
     if (this.flushInterval) clearInterval(this.flushInterval);
     if (this.rafId) cancelAnimationFrame(this.rafId);
     this.flush();
@@ -93,18 +86,6 @@ export class ProctorClient {
     });
   }
 
-  // --- Fullscreen ---------------------------------------------------------
-
-  private setupFullscreen(): void {
-    document.documentElement.requestFullscreen?.().catch(() => {});
-
-    document.addEventListener("fullscreenchange", () => {
-      if (!document.fullscreenElement) {
-        this.emit("fullscreen_exit", 0.5, {});
-      }
-    });
-  }
-
   // --- Visibility / blur -------------------------------------------------
 
   private setupVisibility(): void {
@@ -112,11 +93,11 @@ export class ProctorClient {
       if (document.visibilityState === "hidden") {
         this.emit("tab_blur", 0.4, {});
       }
-    });
+    }, { signal: this.listeners.signal });
 
     window.addEventListener("blur", () => {
       this.emit("tab_blur", 0.3, {});
-    });
+    }, { signal: this.listeners.signal });
   }
 
   // --- Clipboard / paste -------------------------------------------------
@@ -133,7 +114,7 @@ export class ProctorClient {
           snippet: pasted.slice(0, 100),
         });
       }
-    });
+    }, { signal: this.listeners.signal });
 
     // Paste burst detection on text inputs
     document.addEventListener("input", (e) => {
@@ -149,17 +130,13 @@ export class ProctorClient {
       }
       lastInputLength = target.value.length;
       lastInputTime = now;
-    });
+    }, { signal: this.listeners.signal });
   }
 
   // --- Device enumeration (virtual cameras) ------------------------------
 
   private async enumerateDevices(): Promise<void> {
     try {
-      // Need to request a stream to get device labels
-      const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
-      stream.getTracks().forEach((t) => t.stop());
-
       const devices = await navigator.mediaDevices.enumerateDevices();
       const cameras = devices.filter((d) => d.kind === "videoinput");
       this.cameraLabels = cameras.map((c) => c.label || "");
@@ -185,35 +162,9 @@ export class ProctorClient {
           }
         }
         this.cameraLabels = newCameras.map((c) => c.label || "");
-      });
+      }, { signal: this.listeners.signal });
     } catch {
-      // Permission denied — not fatal
-    }
-  }
-
-  // --- Display enumeration (multiple monitors) ----------------------------
-
-  private async checkDisplays(): Promise<void> {
-    try {
-      const stream = await navigator.mediaDevices.getDisplayMedia({ video: true });
-      const track = stream.getVideoTracks()[0];
-      const settings = track.getSettings();
-
-      if (settings.displaySurface === "monitor") {
-        this.monitors = 1;
-      }
-
-      // Check for virtual display
-      if ((settings as MediaTrackSettings & { logicalSurface?: boolean }).logicalSurface) {
-        this.emit("multiple_displays", 0.7, {
-          logicalSurface: true,
-          displaySurface: settings.displaySurface,
-        });
-      }
-
-      stream.getTracks().forEach((t) => t.stop());
-    } catch {
-      // User declined screen share — fine, just skip
+      // Device enumeration is optional and must never block the interview.
     }
   }
 

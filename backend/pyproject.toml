@@ -33,6 +33,7 @@ dependencies = [
 # audio dependencies they never import.
 voice = [
     "livekit-agents~=1.7",
+    "livekit-plugins-deepgram~=1.7",
     "livekit-plugins-google~=1.7",
     "livekit-plugins-silero~=1.7",
     "structlog~=26.1",

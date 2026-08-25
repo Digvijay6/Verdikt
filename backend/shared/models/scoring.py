@@ -61,10 +61,27 @@ class DimensionScore(BaseModel):
     )
     score: int = Field(ge=0, le=100)
     band: str = Field(
+        "",
         description="One of: 'expert', 'strong', 'adequate', 'weak', 'poor'"
     )
     evidence: str = Field(description="Verbatim quote from the transcript")
     rationale: str
+
+    @model_validator(mode="after")
+    def derive_missing_band(self) -> "DimensionScore":
+        if self.band:
+            return self
+        if self.score >= 90:
+            self.band = "expert"
+        elif self.score >= 70:
+            self.band = "strong"
+        elif self.score >= 50:
+            self.band = "adequate"
+        elif self.score >= 25:
+            self.band = "weak"
+        else:
+            self.band = "poor"
+        return self
 
 
 class ScoringQuestionType(StrEnum):
@@ -262,12 +279,12 @@ class InterviewResult(BaseModel):
     org_id: str
     application_id: str
     job_id: str
-    seniority: str = Field(description="drives composite weights")
+    seniority: str | None = Field("mid-level", description="drives composite weights")
 
     answers: list[AnswerScore]
     holistic: HolisticScore
-    consistency_score: int = Field(
-        ge=0, le=100,
+    consistency_score: float | None = Field(
+        100, ge=0, le=100,
         description="max(0, 100 - sum(penalties))",
     )
 
@@ -285,16 +302,24 @@ class InterviewResult(BaseModel):
     # Compatibility score for v1 consumers. New v2 results derive this from
     # composite_score using 1 + 4 * (composite / 100).
     overall: float = Field(ge=1.0, le=5.0)
+    role_fit: float = Field(
+        3.0,
+        ge=1.0,
+        le=5.0,
+        description="Legacy explanatory score; does not alter the v2 composite.",
+    )
     percentile: float | None = Field(None, description="Within the same job only. Never cross-job.")
     recommendation: Recommendation
     needs_human_review: bool = False
-    human_review_reasons: list[str] = []
+    review_reasons: list[ReviewReason] = Field(default_factory=list)
+    human_review_reasons: list[str] = Field(default_factory=list)
     hard_gate_applied: bool = False
 
     integrity: IntegrityReport
 
     # For Lane 3's recruiter chat context
     transcript_summary: str = Field(
+        "",
         description="Short prose gist for the recruiter chat"
     )
     transcript_url: str = ""

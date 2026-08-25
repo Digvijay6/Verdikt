@@ -25,7 +25,7 @@ class Phase(StrEnum):
     DONE = "done"
 
 
-MAX_FOLLOWUPS_PER_QUESTION = 2
+MAX_FOLLOWUPS_PER_QUESTION = 1
 FOLLOW_UP_SCORE_THRESHOLD = 70  # below this → follow up
 
 # Dimensions that the live scorer returns (correctness only)
@@ -45,6 +45,7 @@ class TurnRecord:
     followup_texts: list[str] = field(default_factory=list)
     followup_answers: list[str] = field(default_factory=list)
     live_correctness: int = 0
+    question_delivered: bool = False
 
 
 @dataclass
@@ -58,7 +59,7 @@ class InterviewStateMachine:
         # candidate answers
         sm.record_answer(transcript, live_correctness)
         if sm.should_follow_up():
-            follow_up = sm.get_follow_up_prompt()
+            follow_up = sm.get_follow_up_prompt("Could you go deeper?")
             # agent asks follow_up
             # candidate answers
             sm.record_followup(transcript)
@@ -70,6 +71,7 @@ class InterviewStateMachine:
     phase: Phase = Phase.GREETING
     _index: int = 0
     _followup_count: int = 0
+    _question_delivered: bool = False
     _current_turn: TurnRecord | None = None
     turns: list[TurnRecord] = field(default_factory=list)
 
@@ -89,9 +91,13 @@ class InterviewStateMachine:
         self._current_turn = TurnRecord(
             question_id=q.id,
             question=q,
+            question_delivered=self._question_delivered,
         )
         self.phase = Phase.LISTENING
         return self._current_turn
+
+    def mark_question_delivered(self) -> None:
+        self._question_delivered = True
 
     def record_answer(
         self,
@@ -133,15 +139,14 @@ class InterviewStateMachine:
             return True
         return False
 
-    def get_follow_up_prompt(self) -> str:
+    def get_follow_up_prompt(self, candidate_prompt: str) -> str:
         """Return the follow-up prompt for the agent to ask."""
         if self._current_turn is None:
             return ""
-        q = self._current_turn.question
         self._followup_count += 1
         self._current_turn.followup_count = self._followup_count
-        self._current_turn.followup_texts.append(q.follow_up_guidance or "")
-        return q.follow_up_guidance or ""
+        self._current_turn.followup_texts.append(candidate_prompt)
+        return candidate_prompt
 
     def advance(self) -> Question | None:
         """Move to the next question. Finalize the current turn."""
@@ -149,6 +154,7 @@ class InterviewStateMachine:
             self.turns.append(self._current_turn)
             self._current_turn = None
         self._followup_count = 0
+        self._question_delivered = False
         self._index += 1
         if self._index >= len(self.questions):
             self.phase = Phase.CLOSING
@@ -164,7 +170,9 @@ class InterviewStateMachine:
         if self.phase is not Phase.CLOSING or len(self.turns) != len(self.questions):
             return False
         return all(
-            turn.question_id == question.id and bool(turn.answer_text.strip())
+            turn.question_id == question.id
+            and turn.question_delivered
+            and bool(turn.answer_text.strip())
             for turn, question in zip(self.turns, self.questions, strict=True)
         )
 

@@ -162,8 +162,6 @@ def persist_result(
             "integrity": result.integrity.model_dump(mode="json"),
             "rubric_version": result.rubric_version,
             "scored_at": result.scored_at.isoformat(),
-            "model_id": result.answers[0].model_id if result.answers else None,
-            "prompt_version": result.answers[0].prompt_version if result.answers else None,
         }
     ).eq("org_id", result.org_id).eq("id", result.interview_id).execute()
     # Publish the recruiter-facing row last. If an earlier normalized write

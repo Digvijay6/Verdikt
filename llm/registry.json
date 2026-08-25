@@ -45,8 +45,13 @@
       "version": "v1"
     },
     "interviewer-system": {
-      "prompt": "interviewer-system.v1.md",
-      "model": "gemini-2.5-flash-native-audio-preview-12-2025",
+      "prompt": "interviewer-system.v2.md",
+      "model": "gemini-2.5-flash",
+      "version": "v2"
+    },
+    "interviewer-follow-up": {
+      "prompt": "interviewer-follow-up.v1.md",
+      "model": "gemini-2.5-flash",
       "version": "v1"
     },
     "score-answer-live": {

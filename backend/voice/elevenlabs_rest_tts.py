@@ -75,11 +75,6 @@ class _RESTChunkedStream(tts_mod.ChunkedStream):
         """Fetch audio from REST API and emit it as chunks."""
         try:
             url = f"https://api.elevenlabs.io/v1/text-to-speech/{self._tts._voice_id}"
-            headers = {
-                "xi-api-key": self._tts._api_key,
-                "Content-Type": "application/json",
-                "Accept": "audio/pcm",
-            }
             payload = {
                 "text": self._text,
                 "model_id": self._tts._model_id,
@@ -96,7 +91,13 @@ class _RESTChunkedStream(tts_mod.ChunkedStream):
                 response = await client.post(
                     url,
                     params={"output_format": "pcm_24000"},
-                    headers=headers,
+                    # Keep credentials out of a local variable: traceback formatters
+                    # may render locals when a provider request fails.
+                    headers={
+                        "xi-api-key": self._tts._api_key,
+                        "Content-Type": "application/json",
+                        "Accept": "audio/pcm",
+                    },
                     json=payload,
                     timeout=30,
                 )
@@ -118,6 +119,12 @@ class _RESTChunkedStream(tts_mod.ChunkedStream):
                 output_emitter.push(audio_data)
                 output_emitter.flush()
 
-        except Exception as e:
-            logger.exception("elevenlabs_rest_tts_failed", error=str(e))
+        except httpx.HTTPStatusError as error:
+            logger.error(
+                "elevenlabs_rest_tts_failed",
+                status_code=error.response.status_code,
+            )
+            raise
+        except Exception:
+            logger.error("elevenlabs_rest_tts_failed")
             raise

@@ -6,7 +6,7 @@ work. Everything else in `docs/` is stable by design.
 If you are an agent reading this cold: check `docs/decisions.md` before
 proposing anything. It records what was rejected and why.
 
-Last updated: 2026-08-24
+Last updated: 2026-08-25
 
 ---
 
@@ -166,6 +166,25 @@ transcript and any live signals but cannot run post-call scoring or publish an
 `interview_score`. The persistence boundary independently rejects a result that
 does not contain the complete configured question set.
 
+Question delivery is gated on LiveKit's completed speech handle: an interrupted
+or unfinished prompt is repeated and overlapping speech is not scored as its
+answer. Scripted turns prefer LiveKit message IDs for transcript attribution,
+with text matching only as a compatibility fallback. STT waits 1.5 seconds
+before endpointing to reduce split answers.
+
+Clarifications, explicit off-topic requests, prompt-injection attempts, and
+short "I don't know" responses are deterministic branches. They do not advance
+or become scored answers; injection attempts are checkpointed immediately as
+integrity events. Follow-ups use one safe configured prompt and never read
+internal guidance aloud. Live scoring may drive that follow-up but has a
+two-second timeout so a provider delay cannot stall the call.
+
+The completion screen polls the token-authenticated interview status and
+distinguishes processing, completed, abandoned, and scoring-review states. End
+call requests server-side room deletion before browser disconnect; tab close
+sends the same request with `sendBeacon`. Terminal invites return 410 rather
+than silently starting a second interview.
+
 Current verification constraints and issues:
 
 - A full Chrome media run on 2026-08-24 contained **10 questions**, not one.
@@ -199,26 +218,22 @@ Current verification constraints and issues:
   never blocked. A real early-exit run persisted the generated greeting,
   finished as `abandoned`, and produced neither a result nor an
   `interview_score` row.
+- A 2026-08-25 Chrome early-exit run confirmed camera/microphone controls, live
+  candidate transcript rendering, confirmation dismissal, immediate room deletion
+  (`ROOM_DELETED`), one persisted transcript turn, final `abandoned` status,
+  interviewer provenance (`gemini-2.5-flash`, prompt v2), zero score rows, and
+  zero matching LiveKit rooms.
+- The configured ElevenLabs credential returned HTTP 401 on 2026-08-25, so a
+  fresh full spoken run could not proceed. The REST adapter no longer leaves
+  the API-key header in traceback locals, but the credential used before that
+  fix appeared in worker output and must be rotated before the next test.
 - HTTP/2 client loggers are clamped above DEBUG because protocol debug output
   can include authorization headers.
 
-**One change waiting for them.** Their redeem assembles the `InterviewPackage`
-itself — fetching the application, validating `job.question_bank` into
-`Question` objects, formatting a resume summary. All lane 1 models. Replace that
-block (`api/routers/interview.py` on `ai-call`, ~lines 175-222) with
-`build_interview_package(application_id, org_id, interview_id)`, about -32 lines
-and +1. Until they do, jobs built after D40 hand them a null `question_bank` and
-redeem fails loudly, which is the intended failure: better than silently parsing
-a rubric into nonsense.
-
-Two things that change on its own merits, not just for D40:
-
-- Their inline summary opens with `resume_highlights.full_name`, which **D14
-  forbids** — the interviewer agent is meant to be blind to name and
-  demographics. `packaging.resume_summary()` omits it.
-- Their redeem reads `application` joined to `job` with no `org_id` filter,
-  relying on the invite lookup for scoping. `build_interview_package()` takes
-  `org_id` and filters on it, per the repo rule.
+Redeem now delegates package construction to Lane 1's
+`build_interview_package(application_id, org_id, interview_id)`. This preserves
+D14's blind interviewer context and D27's tenant-scoped reads while supporting
+D40's per-candidate question set.
 
 ## Three coordination failures worth learning from
 
@@ -260,7 +275,7 @@ renumber yours — the merged one stays put.*
 | Concurrency and monthly limits recorded but unenforced | 1 / 2 |
 | Browser proctor detectors — `frontend/src/lib/proctor/` empty | 2 |
 | Outreach drafting and sending | 3 |
-| Remaining prompt stubs: `interviewer-system`, `score-answer-live`, `score-holistic` | mixed |
+| Remaining prompt stubs: `score-answer-live`, `score-holistic` | mixed |
 | **Nothing is deployed** — Google for Jobs needs a public URL, Resend needs a verified domain | shared |
 
 ## Before writing a query

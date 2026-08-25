@@ -854,6 +854,49 @@ latency becomes unacceptable.
 
 ---
 
+## D42 · The application owns interview flow; the LLM owns bounded conversation
+
+**Chosen:** keep scored question order, delivery acknowledgement, answer
+capture, follow-up count, completion, and early-exit classification in the
+Python state machine. Candidate content cannot select a question or advance
+the phase. The LLM is limited to the greeting, one candidate-question response,
+and registered scoring tasks.
+
+**Rejected:** one conversational prompt conducting the whole interview, and an
+LLM intent-classification call before every turn.
+
+**Why:** a generated interviewer can skip questions, interpret an interruption
+as an answer, read internal follow-up guidance aloud, or obey candidate text.
+Those failures corrupt the normalized Lane 2 → Lane 3 record. Another model
+call per turn adds latency, provenance, failure, and nondeterminism where a
+conservative explicit branch is sufficient.
+
+- LiveKit's completed speech handle proves a question was delivered. An
+  interrupted prompt is repeated and its overlapping candidate fragment is not
+  scored.
+- Clarification, explicit off-topic, prompt-injection, and short uncertainty
+  responses are deterministic branches. Injection evidence is persisted at
+  once. Unmatched answer text remains untrusted and never enters a system
+  instruction.
+- At most one configured, candidate-safe follow-up is allowed. Internal
+  `follow_up_guidance` remains evaluator data and is never spoken.
+- Live correctness may request the follow-up, but it gets two seconds before
+  the deterministic shallow-answer rule continues the call.
+- Completion requires every configured question to have a delivered prompt and
+  a primary answer before the candidate-question period. Anything else keeps
+  its captured data, becomes `abandoned`, and cannot publish an
+  `interview_score`.
+- The candidate may end at any time. The API deletes the media room immediately
+  while the worker alone decides whether the final state is `completed` or
+  `abandoned`.
+
+**Tradeoff accepted:** phrase-based intent handling is deliberately
+high-precision rather than pretending to understand every possible off-topic
+answer. Unrecognized content is scored as an answer and should receive weak
+evidence; it cannot redirect the state machine or reveal private context.
+
+---
+
 ## Provenance of the original plan
 
 The pre-repo architecture research was produced by a different model driving web

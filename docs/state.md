@@ -223,10 +223,11 @@ Current verification constraints and issues:
   (`ROOM_DELETED`), one persisted transcript turn, final `abandoned` status,
   interviewer provenance (`gemini-2.5-flash`, prompt v2), zero score rows, and
   zero matching LiveKit rooms.
-- The configured ElevenLabs credential returned HTTP 401 on 2026-08-25, so a
-  fresh full spoken run could not proceed. The REST adapter no longer leaves
-  the API-key header in traceback locals, but the credential used before that
-  fix appeared in worker output and must be rotated before the next test.
+- The ElevenLabs credential was rotated on 2026-08-25. Authentication and a
+  real `eleven_flash_v2_5` PCM synthesis request both returned HTTP 200. The
+  previous credential appeared in worker output before traceback redaction and
+  must remain revoked; a fresh full spoken interview is still required after
+  restarting the worker with the replacement key.
 - HTTP/2 client loggers are clamped above DEBUG because protocol debug output
   can include authorization headers.
 

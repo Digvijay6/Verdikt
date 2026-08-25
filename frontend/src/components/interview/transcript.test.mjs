@@ -40,3 +40,61 @@ test("ignores blank interim transcriptions", () => {
 
   assert.deepEqual(entries, []);
 });
+
+test("merges adjacent fragments from the same speaker into one readable turn", () => {
+  const entries = toTranscriptEntries(
+    [
+      {
+        text: "I documented the trade-offs",
+        participantInfo: { identity: "candidate-123" },
+        streamInfo: { id: "candidate-1" },
+      },
+      {
+        text: "and kept the rollout reversible",
+        participantInfo: { identity: "candidate-123" },
+        streamInfo: { id: "candidate-2" },
+      },
+      {
+        text: "What did you measure?",
+        participantInfo: { identity: "verdikt-agent" },
+        streamInfo: { id: "agent-1" },
+      },
+    ],
+    "candidate-123",
+  );
+
+  assert.deepEqual(entries, [
+    {
+      id: "candidate-1",
+      speaker: "candidate",
+      text: "I documented the trade-offs and kept the rollout reversible",
+    },
+    { id: "agent-1", speaker: "agent", text: "What did you measure?" },
+  ]);
+});
+
+test("replaces an interim fragment when the same stream publishes fuller text", () => {
+  const entries = toTranscriptEntries(
+    [
+      {
+        text: "When deploy",
+        participantInfo: { identity: "verdikt-agent" },
+        streamInfo: { id: "agent-1" },
+      },
+      {
+        text: "When deploying a service, what do you verify?",
+        participantInfo: { identity: "verdikt-agent" },
+        streamInfo: { id: "agent-1" },
+      },
+    ],
+    "candidate-123",
+  );
+
+  assert.deepEqual(entries, [
+    {
+      id: "agent-1",
+      speaker: "agent",
+      text: "When deploying a service, what do you verify?",
+    },
+  ]);
+});

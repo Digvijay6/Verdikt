@@ -72,6 +72,16 @@ export default function InterviewRoom() {
     };
   }, [connection, phase]);
 
+  useEffect(() => {
+    if (!token || phase !== "live") return;
+    const apiUrl = import.meta.env.VITE_API_URL ?? "http://localhost:8000";
+    const handlePageHide = () => {
+      navigator.sendBeacon(`${apiUrl}/interview/end`, new URLSearchParams({ token }));
+    };
+    window.addEventListener("pagehide", handlePageHide);
+    return () => window.removeEventListener("pagehide", handlePageHide);
+  }, [phase, token]);
+
   const handleInterviewEnd = useCallback(() => {
     setPhase("done");
   }, []);
@@ -91,7 +101,7 @@ export default function InterviewRoom() {
   }
 
   if (phase === "done" || !connection) {
-    return <InterviewComplete />;
+    return <InterviewComplete token={token} />;
   }
 
   return (
@@ -111,6 +121,7 @@ export default function InterviewRoom() {
       }}
     >
       <InterviewSession
+        token={token}
         onInterviewEnd={handleInterviewEnd}
       />
     </LiveKitRoom>
@@ -118,8 +129,10 @@ export default function InterviewRoom() {
 }
 
 function InterviewSession({
+  token,
   onInterviewEnd,
 }: {
+  token?: string;
   onInterviewEnd: () => void;
 }) {
   const {
@@ -157,7 +170,11 @@ function InterviewSession({
 
   const handleEndCall = async () => {
     if (!canEndCall(questionsComplete, window.confirm)) return;
-    await room.disconnect();
+    try {
+      if (token) await api.endInterview(token);
+    } finally {
+      await room.disconnect();
+    }
   };
 
   return (
